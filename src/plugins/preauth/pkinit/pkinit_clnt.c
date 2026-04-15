@@ -117,7 +117,9 @@ pa_pkinit_gen_req(krb5_context context,
         goto cleanup;
     }
 
-    retval = crypto_generate_checksums(context, der_req, &cksum, &cksum2);
+    retval = crypto_generate_checksums(context, der_req,
+                                       reqctx->opts->pachecksum2_digest,
+                                       &cksum, &cksum2);
     if (retval)
         goto cleanup;
     TRACE_PKINIT_CLIENT_REQ_CHECKSUMS(context, &cksum, cksum2);
@@ -652,7 +654,7 @@ pkinit_client_profile(krb5_context context,
                       const krb5_data *realm)
 {
     const char *configured_identity;
-    char *eku_string = NULL, *minbits = NULL;
+    char *eku_string = NULL, *minbits = NULL, *digest_string = NULL;
 
     pkiDebug("pkinit_client_profile %p %p %p %p\n",
              context, plgctx, reqctx, realm);
@@ -683,6 +685,24 @@ pkinit_client_profile(krb5_context context,
                      __FUNCTION__, eku_string);
         }
         free(eku_string);
+    }
+    pkinit_libdefault_string(context, realm,
+                             KRB5_CONF_PKINIT_PACHECKSUM2_DIGEST,
+                             &digest_string);
+    if (digest_string != NULL) {
+        if (strcasecmp(digest_string, "sha-1") == 0) {
+            reqctx->opts->pachecksum2_digest = PKINIT_DIGEST_SHA1;
+        } else if (strcasecmp(digest_string, "sha-256") == 0) {
+            reqctx->opts->pachecksum2_digest = PKINIT_DIGEST_SHA256;
+        } else if (strcasecmp(digest_string, "sha-384") == 0) {
+            reqctx->opts->pachecksum2_digest = PKINIT_DIGEST_SHA384;
+        } else if (strcasecmp(digest_string, "sha-512") == 0) {
+            reqctx->opts->pachecksum2_digest = PKINIT_DIGEST_SHA512;
+        } else {
+            pkiDebug("%s: Invalid value for pachecksum2_digest: '%s'\n",
+                     __FUNCTION__, digest_string);
+        }
+        free(digest_string);
     }
 
     /* Only process anchors here if they were not specified on command line */

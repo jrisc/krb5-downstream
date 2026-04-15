@@ -5762,11 +5762,14 @@ check_digest(const krb5_data *body, const EVP_MD *md, const krb5_data *digest)
 
 krb5_error_code
 crypto_generate_checksums(krb5_context context, const krb5_data *body,
+                          enum pkinit_pachecksum2_digest digest,
                           krb5_data *cksum1_out, krb5_pachecksum2 **cksum2_out)
 {
     krb5_data cksum1 = empty_data();
     krb5_pachecksum2 *cksum2 = NULL;
     krb5_error_code ret;
+    const EVP_MD *md;
+    const krb5_data *oid;
 
     if (!make_digest(body, EVP_sha1(), &cksum1))
         goto fail;
@@ -5775,10 +5778,30 @@ crypto_generate_checksums(krb5_context context, const krb5_data *body,
     if (cksum2 == NULL)
         goto fail;
 
-    if (!make_digest(body, EVP_sha256(), &cksum2->checksum))
+    switch (digest) {
+    case PKINIT_DIGEST_SHA1:
+        md = EVP_sha1();
+        oid = &cms_sha1_id;
+        break;
+    case PKINIT_DIGEST_SHA384:
+        md = EVP_sha384();
+        oid = &cms_sha384_id;
+        break;
+    case PKINIT_DIGEST_SHA512:
+        md = EVP_sha512();
+        oid = &cms_sha512_id;
+        break;
+    case PKINIT_DIGEST_SHA256:
+    default:
+        md = EVP_sha256();
+        oid = &cms_sha256_id;
+        break;
+    }
+
+    if (!make_digest(body, md, &cksum2->checksum))
         goto fail;
 
-    if (krb5int_copy_data_contents(context, &cms_sha256_id,
+    if (krb5int_copy_data_contents(context, oid,
                                    &cksum2->algorithmIdentifier.algorithm))
         goto fail;
 

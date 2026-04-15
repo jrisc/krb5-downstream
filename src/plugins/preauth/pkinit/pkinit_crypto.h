@@ -581,10 +581,12 @@ crypto_req_cert_matching_data(krb5_context context,
 
 int parse_dh_min_bits(krb5_context context, const char *str);
 
-/* Generate a SHA-1 checksum over body in *cksum1_out and a SHA-256 checksum
- * over body in *cksum2_out with appropriate metadata. */
+/* Generate a SHA-1 checksum over body in *cksum1_out and a checksum
+ * over body in *cksum2_out with appropriate metadata using the digest
+ * algorithm specified by digest. */
 krb5_error_code
 crypto_generate_checksums(krb5_context context, const krb5_data *body,
+			  enum pkinit_pachecksum2_digest digest,
 			  krb5_data *cksum1_out,
 			  krb5_pachecksum2 **cksum2_out);
 

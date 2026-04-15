@@ -50,6 +50,7 @@ pkinit_init_req_opts(pkinit_req_opts **reqopts)
     opts->allow_upn = 0;
     opts->require_crl_checking = 0;
     opts->dh_size = PKINIT_DEFAULT_DH_MIN_BITS;
+    opts->pachecksum2_digest = PKINIT_DIGEST_SHA256;
 
     *reqopts = opts;
 

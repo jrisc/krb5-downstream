@@ -64,6 +64,16 @@
 #define PKINIT_DH_P384_BITS         7680
 #define PKINIT_DH_P521_BITS         15360
 
+/*
+ * Digest algorithms for paChecksum2
+ */
+enum pkinit_pachecksum2_digest {
+    PKINIT_DIGEST_SHA1 = 1,
+    PKINIT_DIGEST_SHA256 = 2,
+    PKINIT_DIGEST_SHA384 = 3,
+    PKINIT_DIGEST_SHA512 = 4
+};
+
 #define KRB5_CONF_KDCDEFAULTS                   "kdcdefaults"
 #define KRB5_CONF_LIBDEFAULTS                   "libdefaults"
 #define KRB5_CONF_REALMS                        "realms"
@@ -82,6 +92,7 @@
 #define KRB5_CONF_PKINIT_REQUIRE_CRL_CHECKING   "pkinit_require_crl_checking"
 #define KRB5_CONF_PKINIT_REQUIRE_FRESHNESS      "pkinit_require_freshness"
 #define KRB5_CONF_PKINIT_REVOKE                 "pkinit_revoke"
+#define KRB5_CONF_PKINIT_PACHECKSUM2_DIGEST     "pachecksum2_digest"
 
 /* Make pkiDebug(fmt,...) print, or not.  */
 #ifdef DEBUG
@@ -167,6 +178,7 @@ typedef struct _pkinit_req_opts {
     int dh_size;	    /* initial request DH modulus size (default=1024) */
     int require_hostname_match;
     int disable_freshness;
+    enum pkinit_pachecksum2_digest pachecksum2_digest;
 } pkinit_req_opts;
 
 /*
