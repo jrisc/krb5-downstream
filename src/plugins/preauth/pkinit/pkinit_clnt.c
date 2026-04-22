@@ -690,7 +690,9 @@ pkinit_client_profile(krb5_context context,
                              KRB5_CONF_PKINIT_PACHECKSUM2_DIGEST,
                              &digest_string);
     if (digest_string != NULL) {
-        if (strcasecmp(digest_string, "sha-1") == 0) {
+        if (strcasecmp(digest_string, "none") == 0) {
+            reqctx->opts->pachecksum2_digest = PKINIT_DIGEST_NONE;
+        } else if (strcasecmp(digest_string, "sha-1") == 0) {
             reqctx->opts->pachecksum2_digest = PKINIT_DIGEST_SHA1;
         } else if (strcasecmp(digest_string, "sha-256") == 0) {
             reqctx->opts->pachecksum2_digest = PKINIT_DIGEST_SHA256;

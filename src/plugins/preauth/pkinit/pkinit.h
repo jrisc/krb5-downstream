@@ -68,6 +68,7 @@
  * Digest algorithms for paChecksum2
  */
 enum pkinit_pachecksum2_digest {
+    PKINIT_DIGEST_NONE = 0,
     PKINIT_DIGEST_SHA1 = 1,
     PKINIT_DIGEST_SHA256 = 2,
     PKINIT_DIGEST_SHA384 = 3,
