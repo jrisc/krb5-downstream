@@ -37,13 +37,11 @@
 
 #include <openssl/bn.h>
 #include <openssl/dh.h>
-#include <openssl/x509.h>
 #include <openssl/pkcs7.h>
 #include <openssl/pkcs12.h>
 #include <openssl/obj_mac.h>
 #include <openssl/x509v3.h>
 #include <openssl/err.h>
-#include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/asn1.h>
 #include <openssl/pem.h>
@@ -97,35 +95,13 @@ struct _pkinit_identity_crypto_context {
     pkinit_deferred_id *deferred_ids;
 };
 
-struct _pkinit_plg_crypto_context {
-    EVP_PKEY *dh_1024;
-    EVP_PKEY *dh_2048;
-    EVP_PKEY *dh_4096;
-    EVP_PKEY *ec_p256;
-    EVP_PKEY *ec_p384;
-    EVP_PKEY *ec_p521;
-    ASN1_OBJECT *id_pkinit_authData;
-    ASN1_OBJECT *id_pkinit_DHKeyData;
-    ASN1_OBJECT *id_pkinit_rkeyData;
-    ASN1_OBJECT *id_pkinit_san;
-    ASN1_OBJECT *id_ms_san_upn;
-    ASN1_OBJECT *id_pkinit_KPClientAuth;
-    ASN1_OBJECT *id_pkinit_KPKdc;
-    ASN1_OBJECT *id_ms_kp_sc_logon;
-    ASN1_OBJECT *id_kp_serverAuth;
-};
-
-struct _pkinit_req_crypto_context {
-    X509 *received_cert;
-    EVP_PKEY *client_pkey;
-};
-
 static krb5_error_code pkinit_init_pkinit_oids(pkinit_plg_crypto_context );
 static void pkinit_fini_pkinit_oids(pkinit_plg_crypto_context );
 
 static krb5_error_code pkinit_init_dh_params(krb5_context,
                                              pkinit_plg_crypto_context);
 static void pkinit_fini_dh_params(pkinit_plg_crypto_context );
+static void pkinit_init_kem_algs(pkinit_plg_crypto_context);
 
 static krb5_error_code pkinit_init_certs(pkinit_identity_crypto_context ctx);
 static void pkinit_fini_certs(pkinit_identity_crypto_context ctx);
@@ -1117,8 +1093,9 @@ oerr(krb5_context context, krb5_error_code code, const char *fmt, ...)
 
     err = ERR_peek_error();
     if (err) {
-        krb5_set_error_message(context, code, _("%s: %s"), str,
-                               ERR_reason_error_string(err));
+        ERR_error_string_n(err, buf, sizeof(buf));
+        krb5_set_error_message(context, code,
+                               _("%s: %s"), str, buf);
     } else {
         krb5_set_error_message(context, code, "%s", str);
     }
@@ -1180,6 +1157,8 @@ pkinit_init_plg_crypto(krb5_context context,
     retval = pkinit_init_dh_params(context, ctx);
     if (retval)
         goto out;
+
+    pkinit_init_kem_algs(ctx);
 
     *cryptoctx = ctx;
 
@@ -1325,6 +1304,12 @@ pkinit_init_pkinit_oids(pkinit_plg_crypto_context ctx)
 
     ctx->id_kp_serverAuth = OBJ_txt2obj("1.3.6.1.5.5.7.3.1", 1);
     if (ctx->id_kp_serverAuth == NULL)
+        return ENOMEM;
+
+    /* id-pkinit-KEMKeyData (1.3.6.1.5.2.3.7) per
+     * draft-bokovoy-kitten-pkinit-pqc */
+    ctx->id_pkinit_KEMKeyData = OBJ_txt2obj("1.3.6.1.5.2.3.7", 1);
+    if (ctx->id_pkinit_KEMKeyData == NULL)
         return ENOMEM;
 
     return 0;
@@ -1482,6 +1467,7 @@ pkinit_fini_pkinit_oids(pkinit_plg_crypto_context ctx)
     ASN1_OBJECT_free(ctx->id_ms_kp_sc_logon);
     ASN1_OBJECT_free(ctx->id_ms_san_upn);
     ASN1_OBJECT_free(ctx->id_kp_serverAuth);
+    ASN1_OBJECT_free(ctx->id_pkinit_KEMKeyData);
 }
 
 static int
@@ -1517,6 +1503,47 @@ pkinit_init_dh_params(krb5_context context, pkinit_plg_crypto_context plgctx)
     }
 
     return 0;
+}
+
+/*
+ * Probe OpenSSL for ML-KEM algorithm availability.  This is
+ * called at plugin init time; results are stored as booleans
+ * in plgctx for use when building ephemeral key algorithm
+ * lists.
+ */
+static void
+pkinit_init_kem_algs(pkinit_plg_crypto_context plgctx)
+{
+#if OPENSSL_VERSION_NUMBER >= 0x30500000L
+    EVP_PKEY *pkey;
+
+    pkey = EVP_PKEY_Q_keygen(NULL, NULL, "ML-KEM-512");
+    plgctx->has_mlkem512 = (pkey != NULL);
+    EVP_PKEY_free(pkey);
+
+    pkey = EVP_PKEY_Q_keygen(NULL, NULL, "ML-KEM-768");
+    plgctx->has_mlkem768 = (pkey != NULL);
+    EVP_PKEY_free(pkey);
+
+    pkey = EVP_PKEY_Q_keygen(NULL, NULL, "ML-KEM-1024");
+    plgctx->has_mlkem1024 = (pkey != NULL);
+    EVP_PKEY_free(pkey);
+
+    pkey = EVP_PKEY_Q_keygen(NULL, NULL,
+                             "MLKEM768-ECDH-P256");
+    plgctx->has_comp_mlkem768_p256 = (pkey != NULL);
+    EVP_PKEY_free(pkey);
+
+    pkey = EVP_PKEY_Q_keygen(NULL, NULL,
+                             "MLKEM768-X25519");
+    plgctx->has_comp_mlkem768_x25519 = (pkey != NULL);
+    EVP_PKEY_free(pkey);
+
+    pkey = EVP_PKEY_Q_keygen(NULL, NULL,
+                             "MLKEM1024-ECDH-P384");
+    plgctx->has_comp_mlkem1024_p384 = (pkey != NULL);
+    EVP_PKEY_free(pkey);
+#endif
 }
 
 static void
@@ -1716,16 +1743,41 @@ cleanup:
     return retval;
 }
 
-/* Return the name ID of the signature algorithm for cert, assuming that the
- * digest used is SHA-256 and the cert uses either an RSA or EC public key. */
+/* Return TRUE if pkey is an ML-DSA key. */
+krb5_boolean
+pkinit_is_mldsa_key(EVP_PKEY *pkey)
+{
+#if OPENSSL_VERSION_NUMBER >= 0x30500000L
+    if (pkey == NULL)
+        return FALSE;
+    return (EVP_PKEY_is_a(pkey, "ML-DSA-44") ||
+            EVP_PKEY_is_a(pkey, "ML-DSA-65") ||
+            EVP_PKEY_is_a(pkey, "ML-DSA-87"));
+#else
+    return FALSE;
+#endif
+}
+
+/* Check if the client's own signing key is PQC. */
+krb5_boolean
+pkinit_my_key_is_pqc(pkinit_identity_crypto_context id_cryptoctx)
+{
+    if (id_cryptoctx == NULL)
+        return FALSE;
+    return pkinit_is_mldsa_key(id_cryptoctx->my_key);
+}
+
+/* Return the NID of the signature algorithm for cert. */
 static int
 cert_sig_alg(X509 *cert)
 {
-    /* Use X509_get0_pubkey() when OpenSSL 1.0 support is removed. */
     EVP_PKEY *pkey = X509_get_pubkey(cert);
     int id;
 
-    if (pkey != NULL && EVP_PKEY_get_base_id(pkey) == EVP_PKEY_EC)
+    if (pkey != NULL && pkinit_is_mldsa_key(pkey))
+        id = X509_get_signature_nid(cert);
+    else if (pkey != NULL &&
+             EVP_PKEY_get_base_id(pkey) == EVP_PKEY_EC)
         id = NID_ecdsa_with_SHA256;
     else
         id = NID_sha256WithRSAEncryption;
@@ -1760,6 +1812,9 @@ cms_signeddata_create(krb5_context context,
     X509_ALGOR *alg = NULL;
     ASN1_OBJECT *oid = NULL, *oid_copy;
     int sig_alg_id;
+    const EVP_MD *digest_md;
+    int digest_nid;
+    krb5_boolean mldsa;
 
     /* Start creating PKCS7 data. */
     if ((p7 = PKCS7_new()) == NULL)
@@ -1835,9 +1890,19 @@ cms_signeddata_create(krb5_context context,
 
         /* will not fill-out EVP_PKEY because it's on the smartcard */
 
-        /* Set digest algs */
-        p7si->digest_alg->algorithm = OBJ_nid2obj(NID_sha256);
+        /* Set digest and signature algorithms.  ML-DSA
+         * requires SHA-512 per RFC 9882; traditional keys
+         * use SHA-256. */
+        mldsa = pkinit_is_mldsa_key(id_cryptoctx->my_key);
+        if (mldsa) {
+            digest_md = EVP_sha512();
+            digest_nid = NID_sha512;
+        } else {
+            digest_md = EVP_sha256();
+            digest_nid = NID_sha256;
+        }
 
+        p7si->digest_alg->algorithm = OBJ_nid2obj(digest_nid);
         if (p7si->digest_alg->parameter != NULL)
             ASN1_TYPE_free(p7si->digest_alg->parameter);
         if ((p7si->digest_alg->parameter = ASN1_TYPE_new()) == NULL)
@@ -1851,14 +1916,18 @@ cms_signeddata_create(krb5_context context,
         p7si->digest_enc_alg->algorithm = OBJ_nid2obj(sig_alg_id);
         if (!(p7si->digest_enc_alg->parameter = ASN1_TYPE_new()))
             goto cleanup;
-        p7si->digest_enc_alg->parameter->type = V_ASN1_NULL;
+        /* ML-DSA parameters MUST be absent (RFC 9882). */
+        if (mldsa)
+            p7si->digest_enc_alg->parameter->type = V_ASN1_UNDEF;
+        else
+            p7si->digest_enc_alg->parameter->type = V_ASN1_NULL;
 
-        /* add signed attributes */
-        /* compute sha256 digest over the EncapsulatedContentInfo */
+        /* Compute digest over EncapsulatedContentInfo for
+         * the message-digest signed attribute. */
         ctx = EVP_MD_CTX_new();
         if (ctx == NULL)
             goto cleanup;
-        EVP_DigestInit_ex(ctx, EVP_sha256(), NULL);
+        EVP_DigestInit_ex(ctx, digest_md, NULL);
         EVP_DigestUpdate(ctx, data, data_len);
         EVP_DigestFinal_ex(ctx, md_data, &md_len);
         EVP_MD_CTX_free(ctx);
@@ -2920,6 +2989,55 @@ check_dh_wellknown(pkinit_plg_crypto_context cryptoctx, EVP_PKEY *pkey)
     return -1;
 }
 
+/*
+ * Return a human-readable name for a raw OID value (without
+ * ASN.1 tag/length).  Writes into buf and returns it.  Uses
+ * the short name for known OIDs, dotted notation otherwise.
+ */
+const char *
+pkinit_algoid_to_name(const krb5_data *oid, char *buf,
+                      size_t buflen)
+{
+    ASN1_OBJECT *obj;
+    const unsigned char *p;
+    unsigned char der[2 + 127];
+    int nid;
+
+    /* Build a DER OBJECT IDENTIFIER (tag + length + value)
+     * so we can use d2i_ASN1_OBJECT.  The raw OID bytes in
+     * krb5_data do not include the ASN.1 tag and length. */
+    if (oid->length <= 0 || (unsigned int)oid->length > 127) {
+        strlcpy(buf, "(unknown)", buflen);
+        return buf;
+    }
+    der[0] = 0x06;
+    der[1] = (unsigned char)oid->length;
+    memcpy(der + 2, oid->data, oid->length);
+
+    p = der;
+    obj = d2i_ASN1_OBJECT(NULL, &p, 2 + oid->length);
+    if (obj == NULL) {
+        strlcpy(buf, "(unknown)", buflen);
+        return buf;
+    }
+    nid = OBJ_obj2nid(obj);
+    if (nid != NID_undef) {
+        strlcpy(buf, OBJ_nid2ln(nid), buflen);
+    } else if (data_eq(*oid, hkdf_sha512_id)) {
+        strlcpy(buf, "HKDF-SHA-512", buflen);
+    } else if (data_eq(*oid, kdf_sha256_id)) {
+        strlcpy(buf, "pkinit-kdf-ah-sha256", buflen);
+    } else if (data_eq(*oid, kdf_sha512_id)) {
+        strlcpy(buf, "pkinit-kdf-ah-sha512", buflen);
+    } else if (data_eq(*oid, kdf_sha1_id)) {
+        strlcpy(buf, "pkinit-kdf-ah-sha1", buflen);
+    } else {
+        OBJ_obj2txt(buf, buflen, obj, 1);
+    }
+    ASN1_OBJECT_free(obj);
+    return buf;
+}
+
 /* Return a short description of the Diffie-Hellman group with the given
  * finite-field group size equivalent. */
 static const char *
@@ -2959,17 +3077,17 @@ client_create_dh(krb5_context context,
                  pkinit_plg_crypto_context plg_cryptoctx,
                  pkinit_req_crypto_context cryptoctx,
                  pkinit_identity_crypto_context id_cryptoctx,
-                 int dh_size, krb5_data *spki_out)
+                 int ek_strength, krb5_data *spki_out)
 {
     krb5_error_code retval = KRB5KDC_ERR_PREAUTH_FAILED;
     EVP_PKEY *params = NULL, *pkey = NULL;
 
     *spki_out = empty_data();
 
-    params = choose_dh_group(plg_cryptoctx, dh_size);
+    params = choose_dh_group(plg_cryptoctx, ek_strength);
     if (params == NULL)
         goto cleanup;
-    TRACE_PKINIT_DH_PROPOSING_GROUP(context, group_desc(dh_size));
+    TRACE_PKINIT_DH_PROPOSING_GROUP(context, group_desc(ek_strength));
 
     pkey = generate_dh_pkey(params);
     if (pkey == NULL)
@@ -3047,7 +3165,7 @@ server_check_dh(krb5_context context,
 {
     EVP_PKEY *client_pkey = NULL;
     int dh_bits;
-    krb5_error_code retval = KRB5KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED;
+    krb5_error_code retval = KRB5KDC_ERR_EPHEMERAL_KEY_PARAMS_NOT_ACCEPTED;
 
     client_pkey = decode_spki(client_spki);
     if (client_pkey == NULL) {
@@ -3235,52 +3353,177 @@ pkinit_create_td_invalid_certificate(
     return retval;
 }
 
-krb5_error_code
-pkinit_create_td_dh_parameters(krb5_context context,
-                               pkinit_plg_crypto_context plg_cryptoctx,
-                               pkinit_req_crypto_context req_cryptoctx,
-                               pkinit_identity_crypto_context id_cryptoctx,
-                               pkinit_plg_opts *opts,
-                               krb5_pa_data ***e_data_out)
+/*
+ * Return a human-readable name for a full AlgorithmIdentifier
+ * (OID + parameters).  For DH/ECDH, identifies the specific
+ * group from the parameters.
+ */
+const char *
+pkinit_algid_to_name(const krb5_algorithm_identifier *alg,
+                     char *buf, size_t buflen)
 {
-    krb5_error_code ret;
-    int i;
+    if (data_eq(alg->algorithm, ec_oid)) {
+        if (data_eq(alg->parameters, ec_p256))
+            strlcpy(buf, "ECDH P-256", buflen);
+        else if (data_eq(alg->parameters, ec_p384))
+            strlcpy(buf, "ECDH P-384", buflen);
+        else if (data_eq(alg->parameters, ec_p521))
+            strlcpy(buf, "ECDH P-521", buflen);
+        else
+            strlcpy(buf, "ECDH (unknown curve)", buflen);
+        return buf;
+    }
+    if (data_eq(alg->algorithm, dh_oid)) {
+        if (data_eq(alg->parameters, oakley_1024))
+            strlcpy(buf, "DH 1024-bit", buflen);
+        else if (data_eq(alg->parameters, oakley_2048))
+            strlcpy(buf, "DH 2048-bit", buflen);
+        else if (data_eq(alg->parameters, oakley_4096))
+            strlcpy(buf, "DH 4096-bit", buflen);
+        else
+            strlcpy(buf, "DH (unknown group)", buflen);
+        return buf;
+    }
+    return pkinit_algoid_to_name(&alg->algorithm,
+                                 buf, buflen);
+}
+
+/* 6 KEM + 6 DH/ECDH */
+#define MAX_EPHEMERAL_KEY_ALGS 12
+
+/*
+ * If the algorithm is available (has == TRUE) and its strength
+ * meets min_strength, add it to the list.  Returns the updated
+ * index.
+ */
+static inline int
+alglist_maybe_add(krb5_algorithm_identifier *algs,
+                  krb5_algorithm_identifier **alglist,
+                  int i, krb5_boolean has,
+                  int strength, int min_strength,
+                  krb5_data oid, krb5_data params)
+{
+    if (!has || strength < min_strength)
+        return i;
+    algs[i].algorithm = oid;
+    algs[i].parameters = params;
+    alglist[i] = &algs[i];
+    return i + 1;
+}
+
+/*
+ * Build the NULL-terminated list of supported ephemeral key
+ * algorithms.  algs must have room for MAX_EPHEMERAL_KEY_ALGS
+ * values and alglist for MAX_EPHEMERAL_KEY_ALGS + 1 pointers.
+ * Returns the number of entries.  Cannot fail.
+ */
+static int
+pkinit_build_ephemeral_key_alglist(
+    pkinit_plg_crypto_context plg_cryptoctx,
+    pkinit_plg_opts *opts,
+    krb5_algorithm_identifier *algs,
+    krb5_algorithm_identifier **alglist)
+{
+    int i = 0;
+    int pqc = opts->pqc_min_algorithm;
+    int dh = opts->dh_min_bits;
+    krb5_data empty = empty_data();
+
+    /* KEM algorithms first (higher preference). */
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->has_comp_mlkem1024_p384,
+        PKINIT_PQC_COMP_MLKEM1024_BITS, pqc,
+        comp_mlkem1024_p384_oid, empty);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->has_mlkem1024,
+        PKINIT_PQC_MLKEM1024_BITS, pqc,
+        mlkem_1024_oid, empty);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->has_comp_mlkem768_p256,
+        PKINIT_PQC_COMP_MLKEM768_BITS, pqc,
+        comp_mlkem768_p256_oid, empty);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->has_comp_mlkem768_x25519,
+        PKINIT_PQC_COMP_MLKEM768_BITS, pqc,
+        comp_mlkem768_x25519_oid, empty);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->has_mlkem768,
+        PKINIT_PQC_MLKEM768_BITS, pqc,
+        mlkem_768_oid, empty);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->has_mlkem512,
+        PKINIT_PQC_MLKEM512_BITS, pqc,
+        mlkem_512_oid, empty);
+
+    /* Traditional DH/ECDH algorithms. */
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->ec_p256 != NULL,
+        PKINIT_DH_P256_BITS, dh,
+        ec_oid, ec_p256);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->ec_p384 != NULL,
+        PKINIT_DH_P384_BITS, dh,
+        ec_oid, ec_p384);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->ec_p521 != NULL,
+        PKINIT_DH_P521_BITS, dh,
+        ec_oid, ec_p521);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->dh_2048 != NULL,
+        2048, dh,
+        dh_oid, oakley_2048);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->dh_4096 != NULL,
+        4096, dh,
+        dh_oid, oakley_4096);
+    i = alglist_maybe_add(
+        algs, alglist, i,
+        plg_cryptoctx->dh_1024 != NULL,
+        1024, dh,
+        dh_oid, oakley_1024);
+
+    alglist[i] = NULL;
+    return i;
+}
+
+krb5_error_code
+pkinit_create_td_ephemeral_key_params(
+    krb5_context context,
+    pkinit_plg_crypto_context plg_cryptoctx,
+    pkinit_req_crypto_context req_cryptoctx,
+    pkinit_identity_crypto_context id_cryptoctx,
+    pkinit_plg_opts *opts,
+    krb5_pa_data ***e_data_out)
+{
+    krb5_error_code ret = KRB5KRB_ERR_GENERIC;
     krb5_pa_data **pa_data = NULL;
     krb5_data *der_alglist = NULL;
-    krb5_algorithm_identifier alg_1024 = { dh_oid, oakley_1024 };
-    krb5_algorithm_identifier alg_2048 = { dh_oid, oakley_2048 };
-    krb5_algorithm_identifier alg_4096 = { dh_oid, oakley_4096 };
-    krb5_algorithm_identifier alg_p256 = { ec_oid, ec_p256 };
-    krb5_algorithm_identifier alg_p384 = { ec_oid, ec_p384 };
-    krb5_algorithm_identifier alg_p521 = { ec_oid, ec_p521 };
-    krb5_algorithm_identifier *alglist[7];
+    krb5_algorithm_identifier algs[MAX_EPHEMERAL_KEY_ALGS];
+    krb5_algorithm_identifier
+        *alglist[MAX_EPHEMERAL_KEY_ALGS + 1];
 
-    i = 0;
-    if (plg_cryptoctx->ec_p256 != NULL &&
-        opts->dh_min_bits <= PKINIT_DH_P256_BITS)
-        alglist[i++] = &alg_p256;
-    if (plg_cryptoctx->ec_p384 != NULL &&
-        opts->dh_min_bits <= PKINIT_DH_P384_BITS)
-        alglist[i++] = &alg_p384;
-    if (plg_cryptoctx->ec_p521 != NULL)
-        alglist[i++] = &alg_p521;
-    if (plg_cryptoctx->dh_2048 != NULL && opts->dh_min_bits <= 2048)
-        alglist[i++] = &alg_2048;
-    if (plg_cryptoctx->dh_4096 != NULL && opts->dh_min_bits <= 4096)
-        alglist[i++] = &alg_4096;
-    if (plg_cryptoctx->dh_1024 != NULL && opts->dh_min_bits <= 1024)
-        alglist[i++] = &alg_1024;
-    alglist[i] = NULL;
-
-    if (i == 0) {
-        ret = KRB5KRB_ERR_GENERIC;
+    if (0 == pkinit_build_ephemeral_key_alglist(
+            plg_cryptoctx, opts, algs, alglist)) {
         k5_setmsg(context, ret,
-                  _("OpenSSL has no supported key exchange groups for "
-                    "pkinit_dh_min_bits=%d"), opts->dh_min_bits);
+                  _("OpenSSL has no supported key exchange "
+                    "groups for pkinit_dh_min_bits=%d"),
+                  opts->dh_min_bits);
         goto cleanup;
     }
 
-    ret = k5int_encode_krb5_td_dh_parameters(alglist, &der_alglist);
+    ret = k5int_encode_krb5_td_ephemeral_key_params(
+        alglist, &der_alglist);
     if (ret)
         goto cleanup;
 
@@ -3293,7 +3536,7 @@ pkinit_create_td_dh_parameters(krb5_context context,
         free(pa_data);
         goto cleanup;
     }
-    pa_data[0]->pa_type = TD_DH_PARAMETERS;
+    pa_data[0]->pa_type = TD_EPHEMERAL_KEY_PARAMETERS;
     pa_data[0]->length = der_alglist->length;
     pa_data[0]->contents = (krb5_octet *)der_alglist->data;
     der_alglist->data = NULL;
@@ -3301,6 +3544,54 @@ pkinit_create_td_dh_parameters(krb5_context context,
 
 cleanup:
     krb5_free_data(context, der_alglist);
+    return ret;
+}
+
+krb5_error_code
+pkinit_build_pa_pk_as_req_hint(
+    krb5_context context,
+    pkinit_plg_crypto_context plg_cryptoctx,
+    pkinit_identity_crypto_context id_cryptoctx,
+    pkinit_plg_opts *opts,
+    krb5_pa_data **pa_out)
+{
+    krb5_error_code ret = KRB5KRB_ERR_GENERIC;
+    krb5_algorithm_identifier algs[MAX_EPHEMERAL_KEY_ALGS];
+    krb5_algorithm_identifier
+        *alglist[MAX_EPHEMERAL_KEY_ALGS + 1];
+    krb5_pa_pk_as_req_hint hint;
+    krb5_data *encoded_hint = NULL;
+    krb5_pa_data *pa = NULL;
+
+    *pa_out = NULL;
+    memset(&hint, 0, sizeof(hint));
+
+    if (0 == pkinit_build_ephemeral_key_alglist(
+            plg_cryptoctx, opts, algs, alglist)) {
+        ret = 0;
+        goto cleanup;
+    }
+
+    hint.ephemeralKeyParameters = alglist;
+    ret = k5int_encode_krb5_pa_pk_as_req_hint(
+        &hint, &encoded_hint);
+    if (ret)
+        goto cleanup;
+
+    pa = calloc(1, sizeof(*pa));
+    if (pa == NULL) {
+        ret = ENOMEM;
+        goto cleanup;
+    }
+    pa->pa_type = KRB5_PADATA_PK_AS_REQ;
+    pa->length = encoded_hint->length;
+    pa->contents = (krb5_octet *)encoded_hint->data;
+    encoded_hint->data = NULL;
+    *pa_out = pa;
+    ret = 0;
+
+cleanup:
+    krb5_free_data(context, encoded_hint);
     return ret;
 }
 
@@ -3338,49 +3629,108 @@ pkinit_check_kdc_pkid(krb5_context context,
     return 0;
 }
 
-krb5_error_code
-pkinit_process_td_dh_params(krb5_context context,
-                            pkinit_plg_crypto_context cryptoctx,
-                            pkinit_req_crypto_context req_cryptoctx,
-                            pkinit_identity_crypto_context id_cryptoctx,
-                            krb5_algorithm_identifier **algId,
-                            int *new_dh_size)
+/*
+ * Check if an algorithm OID is a known KEM algorithm and return its
+ * PKINIT_PQC_*_BITS strength value, or -1 if not recognized.
+ */
+static int
+check_kem_algorithm_oid(const krb5_data *oid)
 {
-    krb5_error_code retval = KRB5KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED;
-    EVP_PKEY *params = NULL;
-    size_t i;
-    int dh_bits, old_dh_size;
+    if (data_eq(*oid, mlkem_512_oid))
+        return PKINIT_PQC_MLKEM512_BITS;
+    if (data_eq(*oid, mlkem_768_oid))
+        return PKINIT_PQC_MLKEM768_BITS;
+    if (data_eq(*oid, mlkem_1024_oid))
+        return PKINIT_PQC_MLKEM1024_BITS;
+    if (data_eq(*oid, comp_mlkem768_p256_oid))
+        return PKINIT_PQC_COMP_MLKEM768_BITS;
+    if (data_eq(*oid, comp_mlkem768_x25519_oid))
+        return PKINIT_PQC_COMP_MLKEM768_BITS;
+    if (data_eq(*oid, comp_mlkem1024_p384_oid))
+        return PKINIT_PQC_COMP_MLKEM1024_BITS;
+    return -1;
+}
 
-    pkiDebug("dh parameters\n");
+/*
+ * Check if an algorithm identifier (OID + parameters) appears
+ * in a KDC-provided list.
+ */
+static krb5_boolean
+algid_in_list(const krb5_algorithm_identifier *alg,
+              krb5_algorithm_identifier **kdc_alglist)
+{
+    int i;
 
-    old_dh_size = *new_dh_size;
-
-    for (i = 0; algId[i] != NULL; i++) {
-        /* Free any parameters from the previous iteration. */
-        EVP_PKEY_free(params);
-        params = NULL;
-
-        if (data_eq(algId[i]->algorithm, dh_oid))
-            params = decode_dh_params(&algId[i]->parameters);
-        else if (data_eq(algId[i]->algorithm, ec_oid))
-            params = decode_ec_params(&algId[i]->parameters);
-        if (params == NULL)
-            continue;
-
-        dh_bits = check_dh_wellknown(cryptoctx, params);
-        /* Skip any parameters shorter than the previous size or unknown. */
-        if (dh_bits == -1 || dh_bits < old_dh_size)
-            continue;
-        TRACE_PKINIT_DH_NEGOTIATED_GROUP(context, group_desc(dh_bits));
-
-        *new_dh_size = dh_bits;
-        retval = 0;
-        goto cleanup;
+    for (i = 0; kdc_alglist[i] != NULL; i++) {
+        if (data_eq(alg->algorithm,
+                    kdc_alglist[i]->algorithm) &&
+            data_eq(alg->parameters,
+                    kdc_alglist[i]->parameters))
+            return TRUE;
     }
+    return FALSE;
+}
 
-cleanup:
-    EVP_PKEY_free(params);
-    return retval;
+/*
+ * Select the weakest client-acceptable ephemeral key algorithm
+ * that appears in the KDC's advertised list.  The client
+ * builds its own list from weakest to strongest and returns
+ * the strength of the first match.  If client_pqc is TRUE,
+ * only PQC algorithms are considered.  Returns 0 if no
+ * mutually acceptable algorithm is found.
+ */
+int
+pkinit_select_ek_algorithm(
+    pkinit_plg_crypto_context plg_cryptoctx,
+    pkinit_plg_opts *opts,
+    krb5_boolean client_pqc,
+    krb5_algorithm_identifier **kdc_alglist)
+{
+    krb5_algorithm_identifier algs[MAX_EPHEMERAL_KEY_ALGS];
+    krb5_algorithm_identifier
+        *alglist[MAX_EPHEMERAL_KEY_ALGS + 1];
+    int i, n, strength;
+
+    n = pkinit_build_ephemeral_key_alglist(
+        plg_cryptoctx, opts, algs, alglist);
+
+    /* Iterate weakest to strongest (the list is built
+     * strongest-first, so iterate in reverse). */
+    for (i = n - 1; i >= 0; i--) {
+        strength = check_kem_algorithm_oid(
+            &alglist[i]->algorithm);
+
+        /* Skip traditional algos if client uses PQC cert. */
+        if (client_pqc && strength == -1)
+            continue;
+
+        if (!algid_in_list(alglist[i], kdc_alglist))
+            continue;
+
+        /* For traditional, derive strength from the
+         * well-known group check. */
+        if (strength == -1) {
+            EVP_PKEY *params = NULL;
+
+            if (data_eq(alglist[i]->algorithm, dh_oid))
+                params = decode_dh_params(
+                    &alglist[i]->parameters);
+            else if (data_eq(alglist[i]->algorithm,
+                             ec_oid))
+                params = decode_ec_params(
+                    &alglist[i]->parameters);
+            if (params == NULL)
+                continue;
+            strength = check_dh_wellknown(
+                plg_cryptoctx, params);
+            EVP_PKEY_free(params);
+            if (strength == -1)
+                continue;
+        }
+
+        return strength;
+    }
+    return 0;
 }
 
 static int
@@ -3419,6 +3769,8 @@ pkinit_pkcs7type2oid(pkinit_plg_crypto_context cryptoctx, int pkcs7_type)
         return cryptoctx->id_pkinit_DHKeyData;
     case CMS_ENVEL_SERVER:
         return cryptoctx->id_pkinit_rkeyData;
+    case CMS_SIGN_KEM_SERVER:
+        return cryptoctx->id_pkinit_KEMKeyData;
     default:
         return NULL;
     }
@@ -4035,6 +4387,7 @@ create_signature(unsigned char **sig, unsigned int *sig_len,
 {
     krb5_error_code retval = ENOMEM;
     EVP_MD_CTX *ctx;
+    size_t slen;
 
     if (pkey == NULL)
         return retval;
@@ -4042,12 +4395,32 @@ create_signature(unsigned char **sig, unsigned int *sig_len,
     ctx = EVP_MD_CTX_new();
     if (ctx == NULL)
         return ENOMEM;
-    EVP_SignInit(ctx, EVP_sha256());
-    EVP_SignUpdate(ctx, data, data_len);
-    *sig_len = EVP_PKEY_size(pkey);
-    if ((*sig = malloc(*sig_len)) == NULL)
-        goto cleanup;
-    EVP_SignFinal(ctx, *sig, sig_len, pkey);
+
+    if (pkinit_is_mldsa_key(pkey)) {
+        /* ML-DSA pure mode per RFC 9882. */
+        if (EVP_DigestSignInit(ctx, NULL, NULL,
+                               NULL, pkey) <= 0)
+            goto cleanup;
+        if (EVP_DigestSign(ctx, NULL, &slen,
+                           data, data_len) <= 0)
+            goto cleanup;
+        if ((*sig = malloc(slen)) == NULL)
+            goto cleanup;
+        if (EVP_DigestSign(ctx, *sig, &slen,
+                           data, data_len) <= 0) {
+            free(*sig);
+            *sig = NULL;
+            goto cleanup;
+        }
+        *sig_len = slen;
+    } else {
+        EVP_SignInit(ctx, EVP_sha256());
+        EVP_SignUpdate(ctx, data, data_len);
+        *sig_len = EVP_PKEY_get_size(pkey);
+        if ((*sig = malloc(*sig_len)) == NULL)
+            goto cleanup;
+        EVP_SignFinal(ctx, *sig, sig_len, pkey);
+    }
 
     retval = 0;
 
@@ -5709,7 +6082,7 @@ parse_dh_min_bits(krb5_context context, const char *str)
     long n;
 
     if (str == NULL)
-        return PKINIT_DEFAULT_DH_MIN_BITS;
+        return PKINIT_DEFAULT_EK_STRENGTH;
 
     n = strtol(str, &endptr, 0);
     if (endptr == str) {
@@ -5729,7 +6102,7 @@ parse_dh_min_bits(krb5_context context, const char *str)
     }
 
     TRACE_PKINIT_DH_INVALID_MIN_BITS(context, str);
-    return PKINIT_DEFAULT_DH_MIN_BITS;
+    return PKINIT_DEFAULT_EK_STRENGTH;
 }
 
 /* Return the OpenSSL message digest type matching the given CMS OID, or NULL

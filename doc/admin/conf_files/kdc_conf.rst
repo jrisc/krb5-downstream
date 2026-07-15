@@ -776,6 +776,12 @@ For information about the syntax of some of these options, see
     The default is 2048.  (P-256, P-384, and P-521 are new in release
     1.22.)
 
+**pkinit_pqc_min_algorithm**
+    Specifies the minimum post-quantum key establishment algorithm
+    the KDC will accept from clients.  See the description of
+    **pkinit_pqc_min_algorithm** in :ref:`krb5.conf(5)` for
+    accepted values.  This option is new in release 1.23.
+
 **pkinit_allow_upn**
     Specifies that the KDC is willing to accept client certificates
     with the Microsoft UserPrincipalName (UPN) Subject Alternative

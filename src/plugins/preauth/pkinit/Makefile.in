@@ -24,7 +24,8 @@ STLIBOBJS= \
 	pkinit_profile.o \
 	pkinit_identity.o \
 	pkinit_matching.o \
-	pkinit_crypto_openssl.o
+	pkinit_crypto_openssl.o \
+	pkinit_crypto_openssl_kem.o
 
 SRCS= \
 	$(srcdir)/pkinit_accessor.c \
@@ -36,7 +37,8 @@ SRCS= \
 	$(srcdir)/pkinit_profile.c \
 	$(srcdir)/pkinit_identity.c \
 	$(srcdir)/pkinit_matching.c \
-	$(srcdir)/pkinit_crypto_openssl.c
+	$(srcdir)/pkinit_crypto_openssl.c \
+	$(srcdir)/pkinit_crypto_openssl_kem.c
 
 #
 # Don't include pkinit_srv.c in the Windows object list since we
@@ -49,7 +51,8 @@ OBJS=	$(OUTPRE)pkinit_accessor.$(OBJEXT) \
 	$(OUTPRE)pkinit_profile.$(OBJEXT) \
 	$(OUTPRE)pkinit_identity.$(OBJEXT) \
 	$(OUTPRE)pkinit_matching.$(OBJEXT) \
-	$(OUTPRE)pkinit_crypto_openssl.$(OBJEXT)
+	$(OUTPRE)pkinit_crypto_openssl.$(OBJEXT) \
+	$(OUTPRE)pkinit_crypto_openssl_kem.$(OBJEXT)
 
 all-unix: all-liblinks
 install-unix: install-libs

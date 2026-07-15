@@ -1104,7 +1104,7 @@ filter_preauth_error(krb5_error_code code)
         /* rfc 4556 */
     case KRB5KDC_ERR_CLIENT_NOT_TRUSTED:
     case KRB5KDC_ERR_INVALID_SIG:
-    case KRB5KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED:
+    case KRB5KDC_ERR_EPHEMERAL_KEY_PARAMS_NOT_ACCEPTED:
     case KRB5KDC_ERR_CANT_VERIFY_CERTIFICATE:
     case KRB5KDC_ERR_INVALID_CERTIFICATE:
     case KRB5KDC_ERR_REVOKED_CERTIFICATE:
@@ -1120,7 +1120,7 @@ filter_preauth_error(krb5_error_code code)
     case KRB5KDC_ERR_KDC_NOT_TRUSTED:
     case KRB5KDC_ERR_REVOCATION_STATUS_UNAVAILABLE:
         /* This value is shared with
-         *     KRB5KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED. */
+         *     KRB5KDC_ERR_EPHEMERAL_KEY_PARAMS_NOT_ACCEPTED. */
         /* case KRB5KDC_ERR_KEY_TOO_WEAK: */
     case KRB5KDC_ERR_DISCARD:
         /* pkinit alg-agility */

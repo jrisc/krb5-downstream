@@ -246,8 +246,8 @@ ReplyKeyPack ::= SEQUENCE {
    ...
 }
 
-TD-DH-PARAMETERS ::= SEQUENCE OF AlgorithmIdentifier
+TD-EPHEMERAL-KEY-PARAMETERS ::= SEQUENCE OF AlgorithmIdentifier
             -- Each AlgorithmIdentifier specifies a set of
-            -- Diffie-Hellman domain parameters [IEEE1363].
+            -- ephemeral key parameters (DH or KEM).
             -- This list is in decreasing preference order.
 END

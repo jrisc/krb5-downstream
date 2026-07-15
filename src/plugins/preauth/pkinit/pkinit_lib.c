@@ -49,7 +49,7 @@ pkinit_init_req_opts(pkinit_req_opts **reqopts)
     opts->accept_secondary_eku = 0;
     opts->allow_upn = 0;
     opts->require_crl_checking = 0;
-    opts->dh_size = PKINIT_DEFAULT_DH_MIN_BITS;
+    opts->trad_min_strength = PKINIT_DEFAULT_EK_STRENGTH;
 
     *reqopts = opts;
 
@@ -81,7 +81,7 @@ pkinit_init_plg_opts(pkinit_plg_opts **plgopts)
     opts->require_freshness = 0;
     opts->disable_freshness = 0;
 
-    opts->dh_min_bits = PKINIT_DEFAULT_DH_MIN_BITS;
+    opts->dh_min_bits = PKINIT_DEFAULT_EK_STRENGTH;
 
     *plgopts = opts;
 
@@ -147,6 +147,9 @@ free_krb5_pa_pk_as_rep(krb5_pa_pk_as_rep **in)
     case choice_pa_pk_as_rep_encKeyPack:
         free((*in)->u.encKeyPack.data);
         break;
+    case choice_pa_pk_as_rep_kemInfo:
+        free((*in)->u.kem_Info.kemSignedData.data);
+        break;
     default:
         break;
     }
@@ -199,6 +202,20 @@ free_krb5_kdc_dh_key_info(krb5_kdc_dh_key_info **in)
 }
 
 void
+free_krb5_kdc_kem_info(krb5_kdc_kem_info **in)
+{
+    if (*in == NULL) return;
+    free((*in)->kemAlgorithm.algorithm.data);
+    free((*in)->kemAlgorithm.parameters.data);
+    free((*in)->kemct.data);
+    free((*in)->kdfAlgorithm.algorithm.data);
+    free((*in)->kdfAlgorithm.parameters.data);
+    free((*in)->serverNonce.data);
+    free(*in);
+    *in = NULL;
+}
+
+void
 free_pachecksum2(krb5_context context, krb5_pachecksum2 **in)
 {
     if (*in == NULL)
@@ -238,13 +255,8 @@ init_krb5_pa_pk_as_rep(krb5_pa_pk_as_rep **in)
 {
     (*in) = malloc(sizeof(krb5_pa_pk_as_rep));
     if ((*in) == NULL) return;
-    (*in)->u.dh_Info.serverDHNonce.length = 0;
-    (*in)->u.dh_Info.serverDHNonce.data = NULL;
-    (*in)->u.dh_Info.dhSignedData.length = 0;
-    (*in)->u.dh_Info.dhSignedData.data = NULL;
-    (*in)->u.encKeyPack.length = 0;
-    (*in)->u.encKeyPack.data = NULL;
-    (*in)->u.dh_Info.kdfID = NULL;
+    memset(*in, 0, sizeof(krb5_pa_pk_as_rep));
+    (*in)->choice = choice_pa_pk_as_rep_UNKNOWN;
 }
 
 krb5_error_code

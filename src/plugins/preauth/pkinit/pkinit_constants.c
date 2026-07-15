@@ -408,3 +408,56 @@ const krb5_data dh_oid = { 0, 7, "\x2A\x86\x48\xce\x3e\x02\x01" };
 
 /* RFC 3279 section 2.3.5 id-ecPublicKey (1.2.840.10045.2.1) */
 const krb5_data ec_oid = { 0, 7, "\x2A\x86\x48\xCE\x3D\x02\x01" };
+
+/* id-alg-hkdf-with-sha512 (1.2.840.113549.1.9.16.3.30) per RFC 8619 */
+static uint8_t hkdf_sha512[] = {
+    0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x10, 0x03, 0x1e
+};
+const krb5_data hkdf_sha512_id = DATA_FROM_ARRAY(hkdf_sha512);
+
+/* ML-KEM-512: joint-iso-itu-t(2) country(16) us(840) organization(1)
+ * gov(101) csor(3) nistalgorithm(4) kem(4) 1 per RFC 9935 */
+static uint8_t mlkem_512_oid_bytes[] = {
+    0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x01
+};
+const krb5_data mlkem_512_oid = DATA_FROM_ARRAY(mlkem_512_oid_bytes);
+
+/* ML-KEM-768: 2.16.840.1.101.3.4.4.2 per RFC 9935 */
+static uint8_t mlkem_768_oid_bytes[] = {
+    0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x02
+};
+const krb5_data mlkem_768_oid = DATA_FROM_ARRAY(mlkem_768_oid_bytes);
+
+/* ML-KEM-1024: 2.16.840.1.101.3.4.4.3 per RFC 9935 */
+static uint8_t mlkem_1024_oid_bytes[] = {
+    0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x03
+};
+const krb5_data mlkem_1024_oid = DATA_FROM_ARRAY(mlkem_1024_oid_bytes);
+
+/* id-MLKEM768-X25519-SHA3-256 (1.3.6.1.5.5.7.6.58) per
+ * draft-ietf-lamps-pq-composite-kem */
+static uint8_t comp_mlkem768_x25519_oid_bytes[] = {
+    0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x06, 0x3a
+};
+const krb5_data comp_mlkem768_x25519_oid =
+    DATA_FROM_ARRAY(comp_mlkem768_x25519_oid_bytes);
+
+/* id-MLKEM768-ECDH-P256-SHA3-256 (1.3.6.1.5.5.7.6.59) */
+static uint8_t comp_mlkem768_p256_oid_bytes[] = {
+    0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x06, 0x3b
+};
+const krb5_data comp_mlkem768_p256_oid =
+    DATA_FROM_ARRAY(comp_mlkem768_p256_oid_bytes);
+
+/* id-MLKEM1024-ECDH-P384-SHA3-256 (1.3.6.1.5.5.7.6.63) */
+static uint8_t comp_mlkem1024_p384_oid_bytes[] = {
+    0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x06, 0x3f
+};
+const krb5_data comp_mlkem1024_p384_oid =
+    DATA_FROM_ARRAY(comp_mlkem1024_p384_oid_bytes);
+
+/* Supported KDF algorithms for the KEM path (HKDF-SHA-512 only). */
+krb5_data const * const supported_kem_kdf_alg_ids[] = {
+    &hkdf_sha512_id,
+    NULL
+};

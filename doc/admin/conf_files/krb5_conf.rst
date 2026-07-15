@@ -1159,6 +1159,42 @@ PKINIT krb5.conf options
     4096, P-384, and P-521.  The default is 2048.  (P-256, P-384, and
     P-521 are new in release 1.22.)
 
+**pkinit_pqc_min_algorithm**
+    Specifies the minimum post-quantum key establishment algorithm
+    the client will accept, per draft-bokovoy-kitten-pkinit-pqc.
+    When set, the client will use the KEM (Key Encapsulation
+    Mechanism) path with ML-KEM instead of Diffie-Hellman key
+    agreement.  The mode (DH vs KEM) is determined by the selected
+    algorithm, not by this option directly.  Accepted values
+    (case-insensitive), in order of increasing strength:
+
+    **ML-KEM-512**
+        NIST security category 1 (also accepted as ``mlkem512``).
+
+    **ML-KEM-768**
+        NIST security category 3 (also accepted as ``mlkem768``).
+        This is the recommended minimum.
+
+    **Composite-ML-KEM-768**
+        Composite ML-KEM-768 with a traditional algorithm
+        (NIST security category 3).
+
+    **ML-KEM-1024**
+        NIST security category 5 (also accepted as ``mlkem1024``).
+
+    **Composite-ML-KEM-1024**
+        Composite ML-KEM-1024 with a traditional algorithm
+        (NIST security category 5).
+
+    If the client's signing certificate uses a post-quantum
+    signature algorithm (e.g. ML-DSA), downgrade prevention is
+    enforced: the client will reject a non-PQC response from the
+    KDC and require the KDC's signature to also use a
+    quantum-resistant algorithm.
+
+    Requires OpenSSL 3.5 or later.  This option is new in release
+    1.23.
+
 **pkinit_identities**
     Specifies the location(s) to be used to find the user's X.509
     identity information.  If this option is specified multiple times,

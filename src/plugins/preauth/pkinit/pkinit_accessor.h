@@ -46,23 +46,30 @@ extern krb5_error_code (*k5int_decode_##type)(const krb5_data *, type ***)
 
 DEF_EXT_FUNC_PTRS(krb5_auth_pack);
 DEF_EXT_FUNC_PTRS(krb5_kdc_dh_key_info);
+DEF_EXT_FUNC_PTRS(krb5_kdc_kem_info);
 DEF_EXT_FUNC_PTRS(krb5_pa_pk_as_rep);
 DEF_EXT_FUNC_PTRS(krb5_pa_pk_as_req);
+DEF_EXT_FUNC_PTRS(krb5_pa_pk_as_req_hint);
 DEF_EXT_FUNC_PTRS(krb5_reply_key_pack);
 
 /* special cases... */
 extern krb5_error_code (*k5int_decode_krb5_principal_name)
 	(const krb5_data *, krb5_principal_data **);
 
-extern krb5_error_code (*k5int_encode_krb5_td_dh_parameters)
-	(krb5_algorithm_identifier *const *, krb5_data **code);
-extern krb5_error_code (*k5int_decode_krb5_td_dh_parameters)
-	(const krb5_data *, krb5_algorithm_identifier ***);
+extern krb5_error_code
+(*k5int_encode_krb5_td_ephemeral_key_params)(
+    krb5_algorithm_identifier *const *, krb5_data **code);
+extern krb5_error_code
+(*k5int_decode_krb5_td_ephemeral_key_params)(
+    const krb5_data *, krb5_algorithm_identifier ***);
 
 extern krb5_error_code (*k5int_encode_krb5_td_trusted_certifiers)
 	(krb5_external_principal_identifier *const *, krb5_data **code);
 extern krb5_error_code (*k5int_decode_krb5_td_trusted_certifiers)
 	(const krb5_data *, krb5_external_principal_identifier ***);
+
+extern krb5_error_code (*k5int_encode_krb5_pkinit_kem_supp_pub_info)
+	(const krb5_pkinit_kem_supp_pub_info *, krb5_data **);
 
 extern krb5_error_code (*k5int_encode_krb5_kdc_req_body)
 	(const krb5_kdc_req *rep, krb5_data **code);

@@ -194,7 +194,7 @@ realm.kinit(realm.user_princ, expected_trace=msgs, env=id_env)
 
 # Test a DH parameter renegotiation by temporarily setting a 4096-bit
 # minimum on the KDC.  (Preauth type 16 is PKINIT PA_PK_AS_REQ;
-# 109 is PKINIT TD_DH_PARAMETERS; 133 is FAST PA-FX-COOKIE.)
+# 109 is PKINIT TD_EPHEMERAL_KEY_PARAMETERS; 133 is FAST PA-FX-COOKIE.)
 mark('DH parameter renegotiation')
 minbits_kdc_conf = {'realms': {'$realm': {'pkinit_dh_min_bits': '4096'}}}
 minbits_env = realm.special_env('restrict', True, kdc_conf=minbits_kdc_conf)

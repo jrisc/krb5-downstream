@@ -329,6 +329,48 @@ To obtain anonymous credentials on a client, run ``kinit -n``, or
 will have the client name ``WELLKNOWN/ANONYMOUS@WELLKNOWN:ANONYMOUS``.
 
 
+Post-quantum PKINIT (ML-KEM)
+----------------------------
+
+Release 1.23 adds support for post-quantum key establishment in
+PKINIT using ML-KEM (FIPS 203), as specified in
+draft-bokovoy-kitten-pkinit-pqc.  When enabled, the client and KDC
+use a Key Encapsulation Mechanism (KEM) instead of Diffie-Hellman
+key agreement, providing resistance against quantum computer
+attacks.
+
+This feature requires OpenSSL 3.5 or later, which provides the
+ML-KEM implementation.  Both pure ML-KEM algorithms (ML-KEM-512,
+ML-KEM-768, ML-KEM-1024) and composite algorithms that combine
+ML-KEM with a traditional algorithm are supported.
+
+The KDC always advertises supported KEM algorithms alongside
+traditional DH/ECDH groups in pre-authentication hints, so
+clients can select a post-quantum algorithm on their first
+attempt.  This is backward compatible: clients that do not support
+KEM will ignore the KEM algorithm entries and use DH as before.
+
+To require a minimum post-quantum algorithm strength, set the
+**pkinit_pqc_min_algorithm** option in :ref:`krb5.conf(5)`.  For
+example, to require at least ML-KEM-768 (NIST security category
+3)::
+
+    [libdefaults]
+        pkinit_pqc_min_algorithm = ML-KEM-768
+
+The mode (DH vs KEM) is determined by the algorithm selected, not
+by the configuration option directly.  The option sets a minimum
+strength floor; if a future post-quantum algorithm uses DH-style
+key agreement rather than KEM, it would use the DH path.
+
+If the client's signing certificate uses a post-quantum signature
+algorithm (such as ML-DSA), downgrade prevention is enforced: the
+client will reject a response from the KDC that does not use a
+post-quantum key establishment method, and will require the KDC's
+signature to also use a quantum-resistant algorithm.  This prevents
+an attacker from forcing a downgrade to traditional cryptography.
+
+
 Freshness tokens
 ----------------
 

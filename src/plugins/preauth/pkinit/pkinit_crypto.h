@@ -41,13 +41,48 @@
 #include <profile.h>
 #include "pkinit_accessor.h"
 
+#include <openssl/evp.h>
+#include <openssl/x509.h>
+#include <openssl/objects.h>
+
+struct _pkinit_plg_crypto_context {
+    EVP_PKEY *dh_1024;
+    EVP_PKEY *dh_2048;
+    EVP_PKEY *dh_4096;
+    EVP_PKEY *ec_p256;
+    EVP_PKEY *ec_p384;
+    EVP_PKEY *ec_p521;
+    ASN1_OBJECT *id_pkinit_authData;
+    ASN1_OBJECT *id_pkinit_DHKeyData;
+    ASN1_OBJECT *id_pkinit_rkeyData;
+    ASN1_OBJECT *id_pkinit_san;
+    ASN1_OBJECT *id_ms_san_upn;
+    ASN1_OBJECT *id_pkinit_KPClientAuth;
+    ASN1_OBJECT *id_pkinit_KPKdc;
+    ASN1_OBJECT *id_ms_kp_sc_logon;
+    ASN1_OBJECT *id_kp_serverAuth;
+    ASN1_OBJECT *id_pkinit_KEMKeyData;
+    krb5_boolean has_mlkem512;
+    krb5_boolean has_mlkem768;
+    krb5_boolean has_mlkem1024;
+    krb5_boolean has_comp_mlkem768_p256;
+    krb5_boolean has_comp_mlkem768_x25519;
+    krb5_boolean has_comp_mlkem1024_p384;
+};
+
+struct _pkinit_req_crypto_context {
+    X509 *received_cert;
+    EVP_PKEY *client_pkey;
+};
+
 /*
  * these describe the CMS message types
  */
 enum cms_msg_types {
     CMS_SIGN_CLIENT,
     CMS_SIGN_SERVER,
-    CMS_ENVEL_SERVER
+    CMS_ENVEL_SERVER,
+    CMS_SIGN_KEM_SERVER
 };
 
 /*
@@ -253,8 +288,8 @@ krb5_error_code client_create_dh
 	pkinit_plg_crypto_context plg_cryptoctx,	/* IN */
 	pkinit_req_crypto_context req_cryptoctx,	/* IN */
 	pkinit_identity_crypto_context id_cryptoctx,	/* IN */
-	int dh_size,					/* IN
-		    specifies the DH modulous, eg 1024, 2048, or 4096 */
+	int ek_strength,				/* IN
+		    ephemeral key algorithm strength */
 	krb5_data *spki_out);				/* OUT
 		    receives SubjectPublicKeyInfo encoding */
 
@@ -455,9 +490,10 @@ krb5_error_code pkinit_get_kdc_cert
 	krb5_principal princ);				/* IN */
 
 /*
- * this function creates edata that contains TD-DH-PARAMETERS
+ * Create edata containing TD-EPHEMERAL-KEY-PARAMETERS,
+ * including both DH/ECDH and KEM algorithms.
  */
-krb5_error_code pkinit_create_td_dh_parameters
+krb5_error_code pkinit_create_td_ephemeral_key_params
 	(krb5_context context,				/* IN */
 	pkinit_plg_crypto_context plg_cryptoctx,	/* IN */
 	pkinit_req_crypto_context req_cryptoctx,	/* IN */
@@ -466,19 +502,27 @@ krb5_error_code pkinit_create_td_dh_parameters
 	krb5_pa_data ***e_data_out);			/* OUT */
 
 /*
- * this function processes edata that contains TD-DH-PARAMETERS.
- * the client processes the received acceptable by KDC DH
- * parameters and picks the first acceptable to it. it matches
- * them against the known DH parameters.
+ * Build a PA-PK-AS-REQ hint containing supported ephemeral
+ * key algorithms for proactive advertisement.
  */
-krb5_error_code pkinit_process_td_dh_params
-	(krb5_context context,				/* IN */
-	pkinit_plg_crypto_context plg_cryptoctx,	/* IN */
-	pkinit_req_crypto_context req_cryptoctx,	/* IN */
-	pkinit_identity_crypto_context id_cryptoctx,	/* IN */
-	krb5_algorithm_identifier **algId,		/* IN */
-	int *new_dh_size);				/* OUT
-		    receives the new DH modulus to use in the new AS-REQ */
+krb5_error_code pkinit_build_pa_pk_as_req_hint
+	(krb5_context context,
+	pkinit_plg_crypto_context plg_cryptoctx,
+	pkinit_identity_crypto_context id_cryptoctx,
+	pkinit_plg_opts *opts,
+	krb5_pa_data **pa_out);
+
+/*
+ * Select the weakest client-acceptable ephemeral key algorithm
+ * that appears in the KDC's advertised list.  If client_pqc
+ * is TRUE, only PQC algorithms are considered.  Returns 0 in
+ * *selected if no mutually acceptable algorithm is found.
+ */
+int pkinit_select_ek_algorithm
+	(pkinit_plg_crypto_context plg_cryptoctx,
+	pkinit_plg_opts *opts,
+	krb5_boolean client_pqc,
+	krb5_algorithm_identifier **kdc_alglist);
 
 /*
  * this function creates edata that contains TD-INVALID-CERTIFICATES
@@ -557,6 +601,14 @@ extern const krb5_data ec_p384;
 extern const krb5_data ec_p521;
 extern const krb5_data dh_oid;
 extern const krb5_data ec_oid;
+extern const krb5_data hkdf_sha512_id;
+extern const krb5_data mlkem_512_oid;
+extern const krb5_data mlkem_768_oid;
+extern const krb5_data mlkem_1024_oid;
+extern const krb5_data comp_mlkem768_x25519_oid;
+extern const krb5_data comp_mlkem768_p256_oid;
+extern const krb5_data comp_mlkem1024_p384_oid;
+extern krb5_data const * const supported_kem_kdf_alg_ids[];
 
 /**
  * An ordered set of OIDs, stored as krb5_data, of KDF algorithms
@@ -580,6 +632,70 @@ crypto_req_cert_matching_data(krb5_context context,
 			      pkinit_cert_matching_data **md_out);
 
 int parse_dh_min_bits(krb5_context context, const char *str);
+
+const char *pkinit_algoid_to_name(const krb5_data *oid,
+				  char *buf, size_t buflen);
+const char *pkinit_algid_to_name(
+	const krb5_algorithm_identifier *alg,
+	char *buf, size_t buflen);
+
+/* KEM path functions (draft-bokovoy-kitten-pkinit-pqc) */
+
+krb5_boolean is_kem_algorithm(const krb5_data *spki);
+
+krb5_boolean
+is_pqc_algorithm_oid(const krb5_data *oid);
+
+krb5_error_code client_create_kem
+	(krb5_context context,
+	pkinit_plg_crypto_context plg_cryptoctx,
+	pkinit_req_crypto_context req_cryptoctx,
+	pkinit_identity_crypto_context id_cryptoctx,
+	int kem_alg_strength,
+	krb5_data *spki_out);
+
+krb5_error_code client_process_kem
+	(krb5_context context,
+	pkinit_plg_crypto_context plg_cryptoctx,
+	pkinit_req_crypto_context req_cryptoctx,
+	pkinit_identity_crypto_context id_cryptoctx,
+	unsigned char *kemct, unsigned int kemct_len,
+	unsigned char **client_key_out, unsigned int *client_key_len_out);
+
+krb5_error_code server_check_kem
+	(krb5_context context,
+	pkinit_plg_crypto_context plg_cryptoctx,
+	pkinit_req_crypto_context req_cryptoctx,
+	pkinit_identity_crypto_context id_cryptoctx,
+	const krb5_data *client_spki,
+	int min_strength);
+
+krb5_error_code server_process_kem
+	(krb5_context context,
+	pkinit_plg_crypto_context plg_cryptoctx,
+	pkinit_req_crypto_context req_cryptoctx,
+	pkinit_identity_crypto_context id_cryptoctx,
+	unsigned char **kemct_out, unsigned int *kemct_len_out,
+	unsigned char **server_key_out, unsigned int *server_key_len_out);
+
+krb5_error_code
+pkinit_kem_kdf(krb5_context context, krb5_data *secret,
+	       const krb5_data *kdf_alg_oid, krb5_enctype enctype,
+	       const krb5_data *as_req, const krb5_data *kem_signed_data,
+	       krb5_keyblock *key_block);
+
+int parse_pqc_min_algorithm(krb5_context context, const char *str);
+
+krb5_boolean pkinit_is_mldsa_key(EVP_PKEY *pkey);
+
+krb5_boolean is_pqc_signing_algorithm(pkinit_req_crypto_context req_cryptoctx);
+
+krb5_boolean
+pkinit_my_key_is_pqc(pkinit_identity_crypto_context id_cryptoctx);
+
+krb5_error_code
+server_get_kem_algorithm_oid(pkinit_req_crypto_context req_cryptoctx,
+			     krb5_algorithm_identifier *alg_id_out);
 
 /* Generate a SHA-1 checksum over body in *cksum1_out and a SHA-256 checksum
  * over body in *cksum2_out with appropriate metadata. */

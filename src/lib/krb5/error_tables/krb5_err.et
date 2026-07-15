@@ -106,7 +106,9 @@ error_code KRB5KRB_ERR_FIELD_TOOLONG,	"Field is too long for this implementation
 error_code KRB5KDC_ERR_CLIENT_NOT_TRUSTED,		"Client not trusted"
 error_code KRB5KDC_ERR_KDC_NOT_TRUSTED,			"KDC not trusted"
 error_code KRB5KDC_ERR_INVALID_SIG,			"Invalid signature"
-error_code KRB5KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED,	"Key parameters not accepted"
+# Was KRB5KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED in RFC 4556;
+# renamed in draft-bokovoy-kitten-pkinit-pqc.
+error_code KRB5KDC_ERR_EPHEMERAL_KEY_PARAMS_NOT_ACCEPTED,	"Key parameters not accepted"
 error_code KRB5KDC_ERR_CERTIFICATE_MISMATCH,		"Certificate mismatch"
 error_code KRB5KRB_AP_ERR_NO_TGT,			"No ticket granting ticket"
 error_code KRB5KDC_ERR_WRONG_REALM,			"Realm not local to KDC"

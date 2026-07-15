@@ -116,8 +116,8 @@ pkinit_create_edata(krb5_context context,
         retval = pkinit_create_td_trusted_certifiers(context,
                                                      plg_cryptoctx, req_cryptoctx, id_cryptoctx, e_data_out);
         break;
-    case KRB5KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED:
-        retval = pkinit_create_td_dh_parameters(context, plg_cryptoctx,
+    case KRB5KDC_ERR_EPHEMERAL_KEY_PARAMS_NOT_ACCEPTED:
+        retval = pkinit_create_td_ephemeral_key_params(context, plg_cryptoctx,
                                                 req_cryptoctx, id_cryptoctx, opts, e_data_out);
         break;
     case KRB5KDC_ERR_INVALID_CERTIFICATE:
@@ -149,15 +149,12 @@ pkinit_server_get_edata(krb5_context context,
 {
     krb5_error_code retval = 0;
     pkinit_kdc_context plgctx = NULL;
+    krb5_pa_data *pa = NULL;
 
     pkiDebug("pkinit_server_get_edata: entered!\n");
 
-
-    /*
-     * If we don't have a realm context for the given realm,
-     * don't tell the client that we support pkinit!
-     */
-    plgctx = pkinit_find_realm_context(context, moddata, request->server);
+    plgctx = pkinit_find_realm_context(context, moddata,
+                                       request->server);
     if (plgctx == NULL)
         retval = EINVAL;
 
@@ -165,7 +162,20 @@ pkinit_server_get_edata(krb5_context context,
     if (!retval)
         cb->send_freshness_token(context, rock);
 
-    (*respond)(arg, retval, NULL);
+    /*
+     * Proactive advertisement (draft-bokovoy-kitten-pkinit-pqc
+     * Section 7.1): for PA-PK-AS-REQ, populate the hint value
+     * with PA-PK-AS-REQ-Hint containing supported ephemeral
+     * key algorithms.  Per RFC 4556 Section 3.4, old clients
+     * will ignore this value.
+     */
+    if (!retval && pa_type == KRB5_PADATA_PK_AS_REQ)
+        pkinit_build_pa_pk_as_req_hint(context,
+                                       plgctx->cryptoctx,
+                                       plgctx->idctx,
+                                       plgctx->opts, &pa);
+
+    (*respond)(arg, retval, pa);
 }
 
 static krb5_error_code
@@ -500,6 +510,8 @@ pkinit_server_verify_padata(krb5_context context,
         goto cleanup;
     }
     if (is_signed) {
+        if (is_pqc_signing_algorithm(reqctx->cryptoctx))
+            TRACE_PKINIT_CLIENT_PQC_CERT(context);
         retval = authorize_cert(context, moddata->certauth_modules, plgctx,
                                 reqctx, cb, rock, request->client, &hwauth);
         if (retval)
@@ -531,15 +543,38 @@ pkinit_server_verify_padata(krb5_context context,
     if (retval)
         goto cleanup;
 
-    /* check dh parameters */
+    /* Check ephemeral key parameters (DH or KEM). */
     if (auth_pack->clientPublicValue.length > 0) {
-        retval = server_check_dh(context, plgctx->cryptoctx,
-                                 reqctx->cryptoctx, plgctx->idctx,
-                                 &auth_pack->clientPublicValue,
-                                 plgctx->opts->dh_min_bits);
-        if (retval) {
-            pkiDebug("bad dh parameters\n");
-            goto cleanup;
+        if (is_kem_algorithm(&auth_pack->clientPublicValue)) {
+            /* KEM path. */
+            reqctx->is_kem = TRUE;
+
+            /* clientDHNonce MUST be absent for pure KEM. */
+            if (auth_pack->clientDHNonce.length > 0) {
+                retval = KRB5KDC_ERR_PREAUTH_FAILED;
+                k5_setmsg(context, retval,
+                          _("clientDHNonce must be absent for KEM path"));
+                goto cleanup;
+            }
+
+            retval = server_check_kem(context, plgctx->cryptoctx,
+                                      reqctx->cryptoctx, plgctx->idctx,
+                                      &auth_pack->clientPublicValue,
+                                      plgctx->opts->pqc_min_algorithm);
+            if (retval) {
+                pkiDebug("bad KEM parameters\n");
+                goto cleanup;
+            }
+        } else {
+            /* DH/ECDH path. */
+            retval = server_check_dh(context, plgctx->cryptoctx,
+                                     reqctx->cryptoctx, plgctx->idctx,
+                                     &auth_pack->clientPublicValue,
+                                     plgctx->opts->dh_min_bits);
+            if (retval) {
+                pkiDebug("bad dh parameters\n");
+                goto cleanup;
+            }
         }
     } else if (!is_signed) {
         /*Anonymous pkinit requires DH*/
@@ -742,11 +777,15 @@ pkinit_server_return_padata(krb5_context context,
     int i = 0;
 
     unsigned char *dh_pubkey = NULL, *server_key = NULL;
+    unsigned char *kemct = NULL;
     unsigned int server_key_len = 0, dh_pubkey_len = 0;
+    unsigned int kemct_len = 0;
     krb5_keyblock reply_key = { 0 };
 
     krb5_kdc_dh_key_info dhkey_info;
     krb5_data *encoded_dhkey_info = NULL;
+    krb5_kdc_kem_info kem_info;
+    krb5_data *encoded_kem_info = NULL;
     krb5_pa_pk_as_rep *rep = NULL;
     krb5_data *out_data = NULL;
     krb5_data secret;
@@ -809,80 +848,141 @@ pkinit_server_return_padata(krb5_context context,
         goto cleanup;
     }
 
-    rep->choice = choice_pa_pk_as_rep_dhInfo;
-
-    retval = server_process_dh(context, plgctx->cryptoctx, reqctx->cryptoctx,
-                               plgctx->idctx, &dh_pubkey, &dh_pubkey_len,
-                               &server_key, &server_key_len);
-    if (retval) {
-        pkiDebug("failed to process/create dh parameters\n");
-        goto cleanup;
-    }
-
-    dhkey_info.subjectPublicKey.length = dh_pubkey_len;
-    dhkey_info.subjectPublicKey.data = (char *)dh_pubkey;
-    dhkey_info.nonce = request->nonce;
-    dhkey_info.dhKeyExpiration = 0;
-
-    retval = k5int_encode_krb5_kdc_dh_key_info(&dhkey_info,
-                                               &encoded_dhkey_info);
-    if (retval) {
-        pkiDebug("encode_krb5_kdc_dh_key_info failed\n");
-        goto cleanup;
-    }
-#ifdef DEBUG_ASN1
-    print_buffer_bin((unsigned char *)encoded_dhkey_info->data,
-                     encoded_dhkey_info->length, "/tmp/kdc_dh_key_info");
-#endif
-
-    retval = cms_signeddata_create(context, plgctx->cryptoctx,
-                                   reqctx->cryptoctx, plgctx->idctx,
-                                   CMS_SIGN_SERVER,
-                                   (unsigned char *)encoded_dhkey_info->data,
-                                   encoded_dhkey_info->length,
-                                   (unsigned char **)
-                                   &rep->u.dh_Info.dhSignedData.data,
-                                   &rep->u.dh_Info.dhSignedData.length);
-    if (retval) {
-        pkiDebug("failed to create pkcs7 signed data\n");
-        goto cleanup;
-    }
-
-    if (reqctx->rcv_auth_pack != NULL &&
-        reqctx->rcv_auth_pack->supportedKDFs != NULL) {
-        /* If using the alg-agility KDF, put the algorithm in the reply
-         * before encoding it.
+    if (reqctx->is_kem) {
+        /*
+         * KEM path (draft-bokovoy-kitten-pkinit-pqc).
          */
+        rep->choice = choice_pa_pk_as_rep_kemInfo;
+
+        /* Perform encapsulation against the client's public key. */
+        retval = server_process_kem(context, plgctx->cryptoctx,
+                                    reqctx->cryptoctx, plgctx->idctx,
+                                    &kemct, &kemct_len,
+                                    &server_key, &server_key_len);
+        if (retval) {
+            pkiDebug("failed to perform KEM encapsulation\n");
+            goto cleanup;
+        }
+
+        /* Build KDCKEMInfo. */
+        memset(&kem_info, 0, sizeof(kem_info));
+        retval = server_get_kem_algorithm_oid(reqctx->cryptoctx,
+                                              &kem_info.kemAlgorithm);
+        if (retval)
+            goto cleanup;
+        kem_info.kemct = make_data(kemct, kemct_len);
+        kem_info.kdfAlgorithm.algorithm = hkdf_sha512_id;
+        kem_info.kdfAlgorithm.parameters = empty_data();
+        kem_info.nonce = request->nonce;
+        /* serverNonce absent for pure ML-KEM. */
+
+        retval = k5int_encode_krb5_kdc_kem_info(&kem_info, &encoded_kem_info);
+        if (retval) {
+            pkiDebug("encode_krb5_kdc_kem_info failed\n");
+            goto cleanup;
+        }
+        /* kemct ownership transferred to kem_info.kemct
+         * via make_data; cleanup will free it. */
+
+        /* Sign KDCKEMInfo with CMS. */
+        retval = cms_signeddata_create(context, plgctx->cryptoctx,
+                                       reqctx->cryptoctx, plgctx->idctx,
+                                       CMS_SIGN_KEM_SERVER,
+                                       (unsigned char *)
+                                       encoded_kem_info->data,
+                                       encoded_kem_info->length,
+                                       (unsigned char **)
+                                       &rep->u.kem_Info.kemSignedData.data,
+                                       &rep->u.kem_Info.kemSignedData.length);
+        if (retval) {
+            pkiDebug("failed to create KEM signed data\n");
+            goto cleanup;
+        }
+
+        retval = k5int_encode_krb5_pa_pk_as_rep(rep, &out_data);
+        if (retval) {
+            pkiDebug("failed to encode AS_REP\n");
+            goto cleanup;
+        }
+
+        /* Derive reply key using HKDF-SHA-512. */
+        secret = make_data(server_key, server_key_len);
+        retval = pkinit_kem_kdf(context, &secret,
+                                &kem_info.kdfAlgorithm.algorithm, enctype,
+                                req_pkt,
+                                &rep->u.kem_Info.kemSignedData,
+                                &reply_key);
+        if (retval) {
+            pkiDebug("pkinit_kem_kdf failed: %s\n", error_message(retval));
+            goto cleanup;
+        }
+    } else {
+        /*
+         * DH/ECDH path (RFC 4556).
+         */
+        rep->choice = choice_pa_pk_as_rep_dhInfo;
+
+        retval = server_process_dh(context, plgctx->cryptoctx,
+                                   reqctx->cryptoctx, plgctx->idctx,
+                                   &dh_pubkey, &dh_pubkey_len,
+                                   &server_key, &server_key_len);
+        if (retval) {
+            pkiDebug("failed to process/create dh parameters\n");
+            goto cleanup;
+        }
+
+        dhkey_info.subjectPublicKey.length = dh_pubkey_len;
+        dhkey_info.subjectPublicKey.data = (char *)dh_pubkey;
+        dhkey_info.nonce = request->nonce;
+        dhkey_info.dhKeyExpiration = 0;
+
+        retval = k5int_encode_krb5_kdc_dh_key_info(&dhkey_info,
+                                                    &encoded_dhkey_info);
+        if (retval) {
+            pkiDebug("encode_krb5_kdc_dh_key_info failed\n");
+            goto cleanup;
+        }
+
+        retval = cms_signeddata_create(context, plgctx->cryptoctx,
+                                       reqctx->cryptoctx, plgctx->idctx,
+                                       CMS_SIGN_SERVER,
+                                       (unsigned char *)
+                                       encoded_dhkey_info->data,
+                                       encoded_dhkey_info->length,
+                                       (unsigned char **)
+                                       &rep->u.dh_Info.dhSignedData.data,
+                                       &rep->u.dh_Info.dhSignedData.length);
+        if (retval) {
+            pkiDebug("failed to create pkcs7 signed data\n");
+            goto cleanup;
+        }
+
         if (reqctx->rcv_auth_pack != NULL &&
             reqctx->rcv_auth_pack->supportedKDFs != NULL) {
-            retval = pkinit_pick_kdf_alg(context, reqctx->rcv_auth_pack->supportedKDFs,
-                                         &(rep->u.dh_Info.kdfID));
+            retval = pkinit_pick_kdf_alg(
+                context, reqctx->rcv_auth_pack->supportedKDFs,
+                &(rep->u.dh_Info.kdfID));
             if (retval) {
                 pkiDebug("pkinit_pick_kdf_alg failed: %s\n",
                          error_message(retval));
                 goto cleanup;
             }
         }
-    }
 
-    retval = k5int_encode_krb5_pa_pk_as_rep(rep, &out_data);
-    if (retval) {
-        pkiDebug("failed to encode AS_REP\n");
-        goto cleanup;
-    }
-#ifdef DEBUG_ASN1
-    if (out_data != NULL)
-        print_buffer_bin((unsigned char *)out_data->data, out_data->length,
-                         "/tmp/kdc_as_rep");
-#endif
+        retval = k5int_encode_krb5_pa_pk_as_rep(rep, &out_data);
+        if (retval) {
+            pkiDebug("failed to encode AS_REP\n");
+            goto cleanup;
+        }
 
-    secret = make_data(server_key, server_key_len);
-    retval = pkinit_kdf(context, &secret, rep->u.dh_Info.kdfID,
-                        request->client, request->server, enctype, req_pkt,
-                        out_data, &reply_key);
-    if (retval) {
-        pkiDebug("pkinit_kdf failed: %s\n", error_message(retval));
-        goto cleanup;
+        secret = make_data(server_key, server_key_len);
+        retval = pkinit_kdf(context, &secret, rep->u.dh_Info.kdfID,
+                            request->client, request->server, enctype,
+                            req_pkt, out_data, &reply_key);
+        if (retval) {
+            pkiDebug("pkinit_kdf failed: %s\n", error_message(retval));
+            goto cleanup;
+        }
     }
 
     retval = cb->replace_reply_key(context, rock, &reply_key, FALSE);
@@ -907,10 +1007,16 @@ cleanup:
     free(out_data);
     if (encoded_dhkey_info != NULL)
         krb5_free_data(context, encoded_dhkey_info);
+    if (encoded_kem_info != NULL)
+        krb5_free_data(context, encoded_kem_info);
     if (encoded_key_pack != NULL)
         krb5_free_data(context, encoded_key_pack);
     free(dh_pubkey);
-    free(server_key);
+    free(kemct);
+    if (server_key != NULL) {
+        OPENSSL_cleanse(server_key, server_key_len);
+        free(server_key);
+    }
     free_krb5_pa_pk_as_req(&reqp);
     free_krb5_pa_pk_as_rep(&rep);
     free_krb5_reply_key_pack(&key_pack);
@@ -1000,6 +1106,18 @@ pkinit_init_kdc_profile(krb5_context context, pkinit_kdc_context plgctx)
                              KRB5_CONF_PKINIT_DH_MIN_BITS, &minbits);
     plgctx->opts->dh_min_bits = parse_dh_min_bits(context, minbits);
     free(minbits);
+
+    {
+        char *pqc_min = NULL;
+        pkinit_kdcdefault_string(context, plgctx->realmname,
+                                 KRB5_CONF_PKINIT_PQC_MIN_ALGORITHM,
+                                 &pqc_min);
+        if (pqc_min != NULL) {
+            plgctx->opts->pqc_min_algorithm =
+                parse_pqc_min_algorithm(context, pqc_min);
+            free(pqc_min);
+        }
+    }
 
     pkinit_kdcdefault_boolean(context, plgctx->realmname,
                               KRB5_CONF_PKINIT_ALLOW_UPN,

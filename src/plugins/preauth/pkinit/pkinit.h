@@ -46,23 +46,32 @@
 #define PK_NOSLOT 999999
 #endif
 
-#define DH_PROTOCOL     1
-#define RSA_PROTOCOL    2
-
 #define TD_TRUSTED_CERTIFIERS 104
 #define TD_INVALID_CERTIFICATES 105
-#define TD_DH_PARAMETERS 109
+/* Was TD_DH_PARAMETERS in RFC 4556; renamed in
+ * draft-bokovoy-kitten-pkinit-pqc. */
+#define TD_EPHEMERAL_KEY_PARAMETERS 109
 
 #define PKINIT_CTX_MAGIC	0x05551212
 #define PKINIT_REQ_CTX_MAGIC	0xdeadbeef
 #define PKINIT_DEFERRED_ID_MAGIC    0x3ca20d21
 
-#define PKINIT_DEFAULT_DH_MIN_BITS  2048
-#define PKINIT_DH_MIN_CONFIG_BITS   1024
+#define PKINIT_DEFAULT_EK_STRENGTH  2048
 /* Rough finite-field bit strength equivalents for the elliptic curve groups */
 #define PKINIT_DH_P256_BITS         3072
 #define PKINIT_DH_P384_BITS         7680
 #define PKINIT_DH_P521_BITS         15360
+
+/*
+ * PQC algorithm security levels, ordered by increasing strength.
+ * Used for pkinit_pqc_min_algorithm comparison.  Values are chosen to be
+ * well above the DH bit equivalents to avoid ambiguity.
+ */
+#define PKINIT_PQC_MLKEM512_BITS        20000   /* NIST Category 1 */
+#define PKINIT_PQC_MLKEM768_BITS        30000   /* NIST Category 3 */
+#define PKINIT_PQC_COMP_MLKEM768_BITS   30000   /* Category 3 composite */
+#define PKINIT_PQC_MLKEM1024_BITS       50000   /* NIST Category 5 */
+#define PKINIT_PQC_COMP_MLKEM1024_BITS  50000   /* Category 5 composite */
 
 #define KRB5_CONF_KDCDEFAULTS                   "kdcdefaults"
 #define KRB5_CONF_LIBDEFAULTS                   "libdefaults"
@@ -82,6 +91,7 @@
 #define KRB5_CONF_PKINIT_REQUIRE_CRL_CHECKING   "pkinit_require_crl_checking"
 #define KRB5_CONF_PKINIT_REQUIRE_FRESHNESS      "pkinit_require_freshness"
 #define KRB5_CONF_PKINIT_REVOKE                 "pkinit_revoke"
+#define KRB5_CONF_PKINIT_PQC_MIN_ALGORITHM      "pkinit_pqc_min_algorithm"
 
 /* Make pkiDebug(fmt,...) print, or not.  */
 #ifdef DEBUG
@@ -154,6 +164,7 @@ typedef struct _pkinit_plg_opts {
     int require_freshness;  /* require freshness token (default is false) */
     int disable_freshness;  /* disable freshness token on client for testing */
     int dh_min_bits;	    /* minimum DH modulus size allowed */
+    int pqc_min_algorithm;  /* minimum PQC algorithm strength (0=no PQC) */
 } pkinit_plg_opts;
 
 /*
@@ -164,7 +175,8 @@ typedef struct _pkinit_req_opts {
     int accept_secondary_eku;
     int allow_upn;
     int require_crl_checking;
-    int dh_size;	    /* initial request DH modulus size (default=1024) */
+    int trad_min_strength; /* min traditional algo strength */
+    int pqc_min_strength;  /* min PQC algo strength (0=any) */
     int require_hostname_match;
     int disable_freshness;
 } pkinit_req_opts;
@@ -219,6 +231,9 @@ struct _pkinit_req_context {
     int identity_prompted;
     krb5_error_code identity_prompt_retval;
     krb5_data *freshness_token;
+    krb5_boolean client_pqc_cert; /* client cert uses PQC sig alg */
+    int selected_ek_strength;     /* runtime-selected algo strength */
+    krb5_algorithm_identifier **kdc_alglist; /* from hint */
 };
 typedef struct _pkinit_req_context *pkinit_req_context;
 
@@ -245,6 +260,7 @@ struct _pkinit_kdc_req_context {
     pkinit_req_crypto_context cryptoctx;
     krb5_auth_pack *rcv_auth_pack;
     krb5_preauthtype pa_type;
+    krb5_boolean is_kem;          /* client requested KEM path */
 };
 typedef struct _pkinit_kdc_req_context *pkinit_kdc_req_context;
 
@@ -340,6 +356,7 @@ void free_krb5_external_principal_identifier(krb5_external_principal_identifier 
 void free_krb5_algorithm_identifiers(krb5_algorithm_identifier ***in);
 void free_krb5_algorithm_identifier(krb5_algorithm_identifier *in);
 void free_krb5_kdc_dh_key_info(krb5_kdc_dh_key_info **in);
+void free_krb5_kdc_kem_info(krb5_kdc_kem_info **in);
 void free_pachecksum2(krb5_context context, krb5_pachecksum2 **in);
 krb5_error_code pkinit_copy_krb5_data(krb5_data *dst, const krb5_data *src);
 

@@ -42,8 +42,10 @@
 
 DEF_FUNC_PTRS(krb5_auth_pack);
 DEF_FUNC_PTRS(krb5_kdc_dh_key_info);
+DEF_FUNC_PTRS(krb5_kdc_kem_info);
 DEF_FUNC_PTRS(krb5_pa_pk_as_rep);
 DEF_FUNC_PTRS(krb5_pa_pk_as_req);
+DEF_FUNC_PTRS(krb5_pa_pk_as_req_hint);
 DEF_FUNC_PTRS(krb5_reply_key_pack);
 
 /* special cases... */
@@ -51,11 +53,11 @@ krb5_error_code
 (*k5int_decode_krb5_principal_name)(const krb5_data *, krb5_principal_data **);
 
 krb5_error_code
-(*k5int_encode_krb5_td_dh_parameters)(krb5_algorithm_identifier *const *,
-                                      krb5_data **code);
+(*k5int_encode_krb5_td_ephemeral_key_params)(
+    krb5_algorithm_identifier *const *, krb5_data **code);
 krb5_error_code
-(*k5int_decode_krb5_td_dh_parameters)(const krb5_data *,
-                                      krb5_algorithm_identifier ***);
+(*k5int_decode_krb5_td_ephemeral_key_params)(
+    const krb5_data *, krb5_algorithm_identifier ***);
 
 krb5_error_code
 (*k5int_encode_krb5_td_trusted_certifiers)
@@ -65,6 +67,10 @@ krb5_error_code
 (*k5int_decode_krb5_td_trusted_certifiers)
 (const krb5_data *,
  krb5_external_principal_identifier ***);
+
+krb5_error_code
+(*k5int_encode_krb5_pkinit_kem_supp_pub_info)
+(const krb5_pkinit_kem_supp_pub_info *, krb5_data **);
 
 krb5_error_code
 (*k5int_encode_krb5_kdc_req_body)(const krb5_kdc_req *rep, krb5_data **code);
@@ -95,13 +101,17 @@ pkinit_accessor_init(void)
 
     SET_PTRS(krb5_auth_pack);
     SET_PTRS(krb5_kdc_dh_key_info);
+    SET_PTRS(krb5_kdc_kem_info);
     SET_PTRS(krb5_pa_pk_as_rep);
     SET_PTRS(krb5_pa_pk_as_req);
+    SET_PTRS(krb5_pa_pk_as_req_hint);
     SET_PTRS(krb5_reply_key_pack);
-    SET_PTRS(krb5_td_dh_parameters);
+    SET_PTRS(krb5_td_ephemeral_key_params);
     SET_PTRS(krb5_td_trusted_certifiers);
 
     /* special cases... */
+    k5int_encode_krb5_pkinit_kem_supp_pub_info =
+        k5int.encode_krb5_pkinit_kem_supp_pub_info;
     k5int_decode_krb5_principal_name = k5int.decode_krb5_principal_name;
     k5int_encode_krb5_kdc_req_body = k5int.encode_krb5_kdc_req_body;
     k5int_krb5_free_kdc_req = k5int.free_kdc_req;

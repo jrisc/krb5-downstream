@@ -1906,7 +1906,7 @@ krb5int_random_string(krb5_context, char *string, unsigned int length);
 /* To keep happy libraries which are (for now) accessing internal stuff */
 
 /* Make sure to increment by one when changing the struct */
-#define KRB5INT_ACCESS_STRUCT_VERSION 23
+#define KRB5INT_ACCESS_STRUCT_VERSION 24
 
 typedef struct _krb5int_access {
     krb5_error_code (*auth_con_get_subkey_enctype)(krb5_context,
@@ -1952,8 +1952,8 @@ typedef struct _krb5int_access {
                                   krb5_data **code);
 
     krb5_error_code
-    (*encode_krb5_td_dh_parameters)(krb5_algorithm_identifier *const *,
-                                    krb5_data **code);
+    (*encode_krb5_td_ephemeral_key_params)(
+        krb5_algorithm_identifier *const *, krb5_data **code);
 
     krb5_error_code
     (*encode_krb5_td_trusted_certifiers)(krb5_external_principal_identifier *
@@ -1978,8 +1978,8 @@ typedef struct _krb5int_access {
     (*decode_krb5_reply_key_pack)(const krb5_data *, krb5_reply_key_pack **);
 
     krb5_error_code
-    (*decode_krb5_td_dh_parameters)(const krb5_data *,
-                                    krb5_algorithm_identifier ***);
+    (*decode_krb5_td_ephemeral_key_params)(
+        const krb5_data *, krb5_algorithm_identifier ***);
 
     krb5_error_code
     (*decode_krb5_td_trusted_certifiers)(const krb5_data *,
@@ -1993,6 +1993,28 @@ typedef struct _krb5int_access {
     (KRB5_CALLCONV *free_kdc_req)(krb5_context, krb5_kdc_req * );
     void
     (*set_prompt_types)(krb5_context, krb5_prompt_type *);
+
+    /*
+     * KEM pkinit asn.1 encode/decode functions
+     * (draft-bokovoy-kitten-pkinit-pqc)
+     */
+    krb5_error_code
+    (*encode_krb5_kdc_kem_info)(const krb5_kdc_kem_info *, krb5_data **);
+
+    krb5_error_code
+    (*decode_krb5_kdc_kem_info)(const krb5_data *, krb5_kdc_kem_info **);
+
+    krb5_error_code
+    (*encode_krb5_pkinit_kem_supp_pub_info)(
+        const krb5_pkinit_kem_supp_pub_info *, krb5_data **);
+
+    krb5_error_code
+    (*encode_krb5_pa_pk_as_req_hint)(
+        const krb5_pa_pk_as_req_hint *, krb5_data **);
+
+    krb5_error_code
+    (*decode_krb5_pa_pk_as_req_hint)(
+        const krb5_data *, krb5_pa_pk_as_req_hint **);
 } krb5int_access;
 
 #define KRB5INT_ACCESS_VERSION                                          \

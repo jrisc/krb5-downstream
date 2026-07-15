@@ -97,6 +97,30 @@
     TRACE(c, "PKINIT used octetstring2key to compute reply key {keyblock}", \
           keyblock)
 
+#define TRACE_PKINIT_CLIENT_REQ_KEM(c)                                  \
+    TRACE(c, "PKINIT client making KEM request")
+#define TRACE_PKINIT_CLIENT_REP_KEM(c)                                  \
+    TRACE(c, "PKINIT client verified KEM reply")
+#define TRACE_PKINIT_CLIENT_REP_KEM_FAIL(c)                             \
+    TRACE(c, "PKINIT client could not verify KEM reply")
+#define TRACE_PKINIT_CLIENT_DOWNGRADE_REJECTED(c)                       \
+    TRACE(c, "PKINIT client rejected PQC-to-traditional downgrade")
+#define TRACE_PKINIT_KEM_PROPOSING_ALG(c, desc)                         \
+    TRACE(c, "PKINIT using {str} KEM algorithm", desc)
+#define TRACE_PKINIT_KEM_RECEIVED_ALG(c, desc)                          \
+    TRACE(c, "PKINIT received {str} KEM key from client", desc)
+#define TRACE_PKINIT_KEM_REJECTING_ALG(c, desc, mindesc)                \
+    TRACE(c, "PKINIT client KEM {str}, need at least {str}", desc, mindesc)
+#define TRACE_PKINIT_KEM_KDF(c, kdfname, keyblock)                      \
+    TRACE(c, "PKINIT used KEM KDF {str} to derive reply key "           \
+          "{keyblock}", kdfname, keyblock)
+#define TRACE_PKINIT_CLIENT_HINT_ALG(c, name)                           \
+    TRACE(c, "PKINIT KDC advertised algorithm {str}", name)
+#define TRACE_PKINIT_CLIENT_PQC_CERT(c)                                 \
+    TRACE(c, "PKINIT client certificate is ML-DSA")
+#define TRACE_PKINIT_KDC_PQC_CERT(c)                                    \
+    TRACE(c, "PKINIT KDC certificate is ML-DSA")
+
 #define TRACE_PKINIT_OPENSSL_ERROR(c, msg)              \
     TRACE(c, "PKINIT OpenSSL error: {str}", msg)
 

@@ -1394,6 +1394,58 @@ DEFSEQTYPE(pkinit_supp_pub_info, krb5_pkinit_supp_pub_info,
 MAKE_ENCODER(encode_krb5_pkinit_supp_pub_info, pkinit_supp_pub_info);
 MAKE_ENCODER(encode_krb5_sp80056a_other_info, sp80056a_other_info);
 
+/* PA-PK-AS-REQ-Hint (draft-bokovoy-kitten-pkinit-pqc) */
+DEFFIELD(pa_pk_as_req_hint_0, krb5_pa_pk_as_req_hint,
+         ephemeralKeyParameters, 0,
+         opt_ptr_seqof_algorithm_identifier);
+static const struct atype_info *pa_pk_as_req_hint_fields[] = {
+    &k5_atype_pa_pk_as_req_hint_0
+};
+DEFSEQTYPE(pa_pk_as_req_hint, krb5_pa_pk_as_req_hint,
+           pa_pk_as_req_hint_fields);
+MAKE_ENCODER(encode_krb5_pa_pk_as_req_hint, pa_pk_as_req_hint);
+MAKE_DECODER(decode_krb5_pa_pk_as_req_hint, pa_pk_as_req_hint);
+
+/* KDCKEMInfo (draft-bokovoy-kitten-pkinit-pqc) */
+DEFFIELD(kem_info_0, krb5_kdc_kem_info, kemAlgorithm, 0,
+         algorithm_identifier);
+DEFFIELD_IMPLICIT(kem_info_1, krb5_kdc_kem_info, kemct, 1, ostring_data);
+DEFFIELD(kem_info_2, krb5_kdc_kem_info, kdfAlgorithm, 2,
+         algorithm_identifier);
+DEFFIELD(kem_info_3, krb5_kdc_kem_info, nonce, 3, opt_int32);
+DEFFIELD_IMPLICIT(kem_info_4, krb5_kdc_kem_info, serverNonce, 4,
+                  opt_ostring_data);
+static const struct atype_info *kdc_kem_info_fields[] = {
+    &k5_atype_kem_info_0, &k5_atype_kem_info_1, &k5_atype_kem_info_2,
+    &k5_atype_kem_info_3, &k5_atype_kem_info_4
+};
+DEFSEQTYPE(kdc_kem_info, krb5_kdc_kem_info, kdc_kem_info_fields);
+
+/* KEMRepInfo (draft-bokovoy-kitten-pkinit-pqc) */
+DEFFIELD_IMPLICIT(kem_rep_info_0, krb5_kem_rep_info, kemSignedData, 0,
+                  ostring_data);
+static const struct atype_info *kem_rep_info_fields[] = {
+    &k5_atype_kem_rep_info_0
+};
+DEFSEQTYPE(kem_rep_info, krb5_kem_rep_info, kem_rep_info_fields);
+
+/* PkinitKEMSuppPubInfo (draft-bokovoy-kitten-pkinit-pqc) */
+DEFFIELD(kem_supp_pub_0, krb5_pkinit_kem_supp_pub_info, enctype, 0, int32);
+DEFFIELD(kem_supp_pub_1, krb5_pkinit_kem_supp_pub_info, as_req, 1,
+         ostring_data);
+DEFFIELD(kem_supp_pub_2, krb5_pkinit_kem_supp_pub_info, kemSignedData, 2,
+         ostring_data);
+static const struct atype_info *pkinit_kem_supp_pub_info_fields[] = {
+    &k5_atype_kem_supp_pub_0, &k5_atype_kem_supp_pub_1,
+    &k5_atype_kem_supp_pub_2
+};
+DEFSEQTYPE(pkinit_kem_supp_pub_info, krb5_pkinit_kem_supp_pub_info,
+           pkinit_kem_supp_pub_info_fields);
+
+MAKE_ENCODER(encode_krb5_kdc_kem_info, kdc_kem_info);
+MAKE_DECODER(decode_krb5_kdc_kem_info, kdc_kem_info);
+MAKE_ENCODER(encode_krb5_pkinit_kem_supp_pub_info, pkinit_kem_supp_pub_info);
+
 DEFFIELD(pachecksum2_0, krb5_pachecksum2, checksum, 0, ostring_data);
 DEFFIELD(pachecksum2_1, krb5_pachecksum2, algorithmIdentifier, 1,
          algorithm_identifier);
@@ -1498,8 +1550,10 @@ DEFSEQTYPE(reply_key_pack, krb5_reply_key_pack, reply_key_pack_fields);
 
 DEFCTAGGEDTYPE(pa_pk_as_rep_0, 0, dh_rep_info);
 DEFCTAGGEDTYPE_IMPLICIT(pa_pk_as_rep_1, 1, ostring_data);
+DEFCTAGGEDTYPE(pa_pk_as_rep_2, 2, kem_rep_info);
 static const struct atype_info *pa_pk_as_rep_alternatives[] = {
-    &k5_atype_pa_pk_as_rep_0, &k5_atype_pa_pk_as_rep_1
+    &k5_atype_pa_pk_as_rep_0, &k5_atype_pa_pk_as_rep_1,
+    &k5_atype_pa_pk_as_rep_2
 };
 DEFCHOICETYPE(pa_pk_as_rep_choice, union krb5_pa_pk_as_rep_choices,
               enum krb5_pa_pk_as_rep_selection, pa_pk_as_rep_alternatives);
@@ -1520,8 +1574,10 @@ MAKE_ENCODER(encode_krb5_td_trusted_certifiers,
              seqof_external_principal_identifier);
 MAKE_DECODER(decode_krb5_td_trusted_certifiers,
              seqof_external_principal_identifier);
-MAKE_ENCODER(encode_krb5_td_dh_parameters, seqof_algorithm_identifier);
-MAKE_DECODER(decode_krb5_td_dh_parameters, seqof_algorithm_identifier);
+MAKE_ENCODER(encode_krb5_td_ephemeral_key_params,
+             seqof_algorithm_identifier);
+MAKE_DECODER(decode_krb5_td_ephemeral_key_params,
+             seqof_algorithm_identifier);
 MAKE_DECODER(decode_krb5_principal_name, pkinit_krb5_principal_name_data);
 
 #else /* DISABLE_PKINIT */
@@ -1538,6 +1594,27 @@ encode_krb5_sp80056a_other_info(const krb5_sp80056a_other_info *rep,
 krb5_error_code
 encode_krb5_pkinit_supp_pub_info(const krb5_pkinit_supp_pub_info *rep,
                                  krb5_data **code)
+{
+    return EINVAL;
+}
+
+krb5_error_code
+encode_krb5_kdc_kem_info(
+    const krb5_kdc_kem_info *rep, krb5_data **code)
+{
+    return EINVAL;
+}
+
+krb5_error_code
+encode_krb5_pkinit_kem_supp_pub_info(
+    const krb5_pkinit_kem_supp_pub_info *rep, krb5_data **code)
+{
+    return EINVAL;
+}
+
+krb5_error_code
+encode_krb5_pa_pk_as_req_hint(
+    const krb5_pa_pk_as_req_hint *rep, krb5_data **code)
 {
     return EINVAL;
 }

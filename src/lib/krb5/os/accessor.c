@@ -85,7 +85,7 @@ krb5int_accessor(krb5int_access *internals, krb5_int32 version)
             SC (encode_krb5_kdc_dh_key_info, encode_krb5_kdc_dh_key_info),
             SC (encode_krb5_reply_key_pack, encode_krb5_reply_key_pack),
             SC (encode_krb5_td_trusted_certifiers, encode_krb5_td_trusted_certifiers),
-            SC (encode_krb5_td_dh_parameters, encode_krb5_td_dh_parameters),
+            SC (encode_krb5_td_ephemeral_key_params, encode_krb5_td_ephemeral_key_params),
             SC (decode_krb5_pa_pk_as_req, decode_krb5_pa_pk_as_req),
             SC (decode_krb5_pa_pk_as_rep, decode_krb5_pa_pk_as_rep),
             SC (decode_krb5_auth_pack, decode_krb5_auth_pack),
@@ -93,10 +93,15 @@ krb5int_accessor(krb5int_access *internals, krb5_int32 version)
             SC (decode_krb5_principal_name, decode_krb5_principal_name),
             SC (decode_krb5_reply_key_pack, decode_krb5_reply_key_pack),
             SC (decode_krb5_td_trusted_certifiers, decode_krb5_td_trusted_certifiers),
-            SC (decode_krb5_td_dh_parameters, decode_krb5_td_dh_parameters),
+            SC (decode_krb5_td_ephemeral_key_params, decode_krb5_td_ephemeral_key_params),
             SC (encode_krb5_kdc_req_body, encode_krb5_kdc_req_body),
             SC (free_kdc_req, krb5_free_kdc_req),
             SC (set_prompt_types, k5_set_prompt_types),
+            SC (encode_krb5_kdc_kem_info, encode_krb5_kdc_kem_info),
+            SC (decode_krb5_kdc_kem_info, decode_krb5_kdc_kem_info),
+            SC (encode_krb5_pkinit_kem_supp_pub_info, encode_krb5_pkinit_kem_supp_pub_info),
+            SC (encode_krb5_pa_pk_as_req_hint, encode_krb5_pa_pk_as_req_hint),
+            SC (decode_krb5_pa_pk_as_req_hint, decode_krb5_pa_pk_as_req_hint),
 #undef SC
 
 #if DESIGNATED_INITIALIZERS

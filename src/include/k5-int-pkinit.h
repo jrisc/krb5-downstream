@@ -74,6 +74,11 @@ typedef struct _krb5_external_principal_identifier {
     krb5_data subjectKeyIdentifier; /* Optional */
 } krb5_external_principal_identifier;
 
+/* PA-PK-AS-REQ-Hint (draft-bokovoy-kitten-pkinit-pqc) */
+typedef struct _krb5_pa_pk_as_req_hint {
+    krb5_algorithm_identifier **ephemeralKeyParameters; /* Optional */
+} krb5_pa_pk_as_req_hint;
+
 /* PA-PK-AS-REQ (rfc4556 -- PA TYPE 16) */
 typedef struct _krb5_pa_pk_as_req {
     krb5_data signedAuthPack;
@@ -101,16 +106,23 @@ typedef struct _krb5_reply_key_pack {
     krb5_checksum   asChecksum;
 } krb5_reply_key_pack;
 
+/* KEMRepInfo (draft-bokovoy-kitten-pkinit-pqc) */
+typedef struct _krb5_kem_rep_info {
+    krb5_data kemSignedData; /* [0] IMPLICIT OCTET STRING */
+} krb5_kem_rep_info;
+
 /* PA-PK-AS-REP (rfc4556 -- PA TYPE 17) */
 typedef struct _krb5_pa_pk_as_rep {
     enum krb5_pa_pk_as_rep_selection {
         choice_pa_pk_as_rep_UNKNOWN = -1,
         choice_pa_pk_as_rep_dhInfo = 0,
-        choice_pa_pk_as_rep_encKeyPack = 1
+        choice_pa_pk_as_rep_encKeyPack = 1,
+        choice_pa_pk_as_rep_kemInfo = 2
     } choice;
     union krb5_pa_pk_as_rep_choices {
         krb5_dh_rep_info    dh_Info;
         krb5_data           encKeyPack;
+        krb5_kem_rep_info   kem_Info;
     } u;
 } krb5_pa_pk_as_rep;
 
@@ -128,6 +140,22 @@ typedef struct _krb5_pkinit_supp_pub_info {
     krb5_data         as_req;
     krb5_data         pk_as_rep;
 } krb5_pkinit_supp_pub_info;
+
+/* KDCKEMInfo (draft-bokovoy-kitten-pkinit-pqc) */
+typedef struct _krb5_kdc_kem_info {
+    krb5_algorithm_identifier kemAlgorithm;   /* [0] KEM algorithm OID */
+    krb5_data                 kemct;           /* [1] KEM ciphertext */
+    krb5_algorithm_identifier kdfAlgorithm;   /* [2] selected KDF */
+    krb5_int32                nonce;           /* [3] OPTIONAL (0=absent) */
+    krb5_data                 serverNonce;     /* [4] OPTIONAL */
+} krb5_kdc_kem_info;
+
+/* PkinitKEMSuppPubInfo (draft-bokovoy-kitten-pkinit-pqc) */
+typedef struct _krb5_pkinit_kem_supp_pub_info {
+    krb5_enctype      enctype;       /* [0] Int32 */
+    krb5_data         as_req;        /* [1] DER(AS-REQ) */
+    krb5_data         kemSignedData; /* [2] DER(kemSignedData) */
+} krb5_pkinit_kem_supp_pub_info;
 
 /*
  * Begin "asn1.h"
@@ -157,8 +185,8 @@ encode_krb5_td_trusted_certifiers(krb5_external_principal_identifier *const *,
                                   krb5_data **code);
 
 krb5_error_code
-encode_krb5_td_dh_parameters(krb5_algorithm_identifier *const *,
-                             krb5_data **code);
+encode_krb5_td_ephemeral_key_params(
+    krb5_algorithm_identifier *const *, krb5_data **code);
 
 krb5_error_code
 encode_krb5_sp80056a_other_info(const krb5_sp80056a_other_info *,
@@ -167,6 +195,17 @@ encode_krb5_sp80056a_other_info(const krb5_sp80056a_other_info *,
 krb5_error_code
 encode_krb5_pkinit_supp_pub_info(const krb5_pkinit_supp_pub_info *,
                                  krb5_data **);
+
+krb5_error_code
+encode_krb5_pa_pk_as_req_hint(
+    const krb5_pa_pk_as_req_hint *, krb5_data **);
+
+krb5_error_code
+encode_krb5_kdc_kem_info(const krb5_kdc_kem_info *, krb5_data **);
+
+krb5_error_code
+encode_krb5_pkinit_kem_supp_pub_info(const krb5_pkinit_kem_supp_pub_info *,
+                                     krb5_data **);
 
 /*************************************************************************
  * Prototypes for pkinit asn.1 decode routines
@@ -195,7 +234,15 @@ decode_krb5_td_trusted_certifiers(const krb5_data *,
                                   krb5_external_principal_identifier ***);
 
 krb5_error_code
-decode_krb5_td_dh_parameters(const krb5_data *, krb5_algorithm_identifier ***);
+decode_krb5_td_ephemeral_key_params(
+    const krb5_data *, krb5_algorithm_identifier ***);
+
+krb5_error_code
+decode_krb5_pa_pk_as_req_hint(
+    const krb5_data *, krb5_pa_pk_as_req_hint **);
+
+krb5_error_code
+decode_krb5_kdc_kem_info(const krb5_data *, krb5_kdc_kem_info **);
 
 krb5_error_code
 encode_krb5_enc_data(const krb5_enc_data *, krb5_data **);
