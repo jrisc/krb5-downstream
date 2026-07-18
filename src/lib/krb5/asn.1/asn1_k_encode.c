@@ -1409,12 +1409,12 @@ MAKE_DECODER(decode_krb5_pa_pk_as_req_hint, pa_pk_as_req_hint);
 /* KDCKEMInfo (draft-bokovoy-kitten-pkinit-pqc) */
 DEFFIELD(kem_info_0, krb5_kdc_kem_info, kemAlgorithm, 0,
          algorithm_identifier);
-DEFFIELD_IMPLICIT(kem_info_1, krb5_kdc_kem_info, kemct, 1, ostring_data);
+DEFFIELD(kem_info_1, krb5_kdc_kem_info, kemct, 1, ostring_data);
 DEFFIELD(kem_info_2, krb5_kdc_kem_info, kdfAlgorithm, 2,
          algorithm_identifier);
 DEFFIELD(kem_info_3, krb5_kdc_kem_info, nonce, 3, opt_int32);
-DEFFIELD_IMPLICIT(kem_info_4, krb5_kdc_kem_info, serverNonce, 4,
-                  opt_ostring_data);
+DEFFIELD(kem_info_4, krb5_kdc_kem_info, serverNonce, 4,
+         opt_ostring_data);
 static const struct atype_info *kdc_kem_info_fields[] = {
     &k5_atype_kem_info_0, &k5_atype_kem_info_1, &k5_atype_kem_info_2,
     &k5_atype_kem_info_3, &k5_atype_kem_info_4
