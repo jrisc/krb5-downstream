@@ -3420,13 +3420,13 @@ alglist_maybe_add(krb5_algorithm_identifier *algs,
 static int
 pkinit_build_ephemeral_key_alglist(
     pkinit_plg_crypto_context plg_cryptoctx,
-    pkinit_plg_opts *opts,
+    int pqc_min, int dh_min,
     krb5_algorithm_identifier *algs,
     krb5_algorithm_identifier **alglist)
 {
     int i = 0;
-    int pqc = opts->pqc_min_algorithm;
-    int dh = opts->dh_min_bits;
+    int pqc = pqc_min;
+    int dh = dh_min;
     krb5_data empty = empty_data();
 
     /* KEM algorithms first (higher preference). */
@@ -3514,7 +3514,8 @@ pkinit_create_td_ephemeral_key_params(
         *alglist[MAX_EPHEMERAL_KEY_ALGS + 1];
 
     if (0 == pkinit_build_ephemeral_key_alglist(
-            plg_cryptoctx, opts, algs, alglist)) {
+            plg_cryptoctx, opts->pqc_min_strength,
+            opts->dh_min_bits, algs, alglist)) {
         k5_setmsg(context, ret,
                   _("OpenSSL has no supported key exchange "
                     "groups for pkinit_dh_min_bits=%d"),
@@ -3567,7 +3568,8 @@ pkinit_build_pa_pk_as_req_hint(
     memset(&hint, 0, sizeof(hint));
 
     if (0 == pkinit_build_ephemeral_key_alglist(
-            plg_cryptoctx, opts, algs, alglist)) {
+            plg_cryptoctx, opts->pqc_min_strength,
+            opts->dh_min_bits, algs, alglist)) {
         ret = 0;
         goto cleanup;
     }
@@ -3682,7 +3684,7 @@ algid_in_list(const krb5_algorithm_identifier *alg,
 int
 pkinit_select_ek_algorithm(
     pkinit_plg_crypto_context plg_cryptoctx,
-    pkinit_plg_opts *opts,
+    int pqc_min, int dh_min,
     krb5_boolean client_pqc,
     krb5_algorithm_identifier **kdc_alglist)
 {
@@ -3692,7 +3694,8 @@ pkinit_select_ek_algorithm(
     int i, n, strength;
 
     n = pkinit_build_ephemeral_key_alglist(
-        plg_cryptoctx, opts, algs, alglist);
+        plg_cryptoctx, pqc_min, dh_min,
+        algs, alglist);
 
     /* Iterate weakest to strongest (the list is built
      * strongest-first, so iterate in reverse). */

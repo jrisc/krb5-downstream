@@ -520,7 +520,7 @@ krb5_error_code pkinit_build_pa_pk_as_req_hint
  */
 int pkinit_select_ek_algorithm
 	(pkinit_plg_crypto_context plg_cryptoctx,
-	pkinit_plg_opts *opts,
+	int pqc_min, int dh_min,
 	krb5_boolean client_pqc,
 	krb5_algorithm_identifier **kdc_alglist);
 

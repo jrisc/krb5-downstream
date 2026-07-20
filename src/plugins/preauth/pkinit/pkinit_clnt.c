@@ -784,7 +784,7 @@ pkinit_client_profile(krb5_context context,
                       const krb5_data *realm)
 {
     const char *configured_identity;
-    char *eku_string = NULL, *minbits = NULL, *pqc_min = NULL;
+    char *eku_string = NULL, *minbits = NULL, *pqc_min_algo = NULL;
 
     pkiDebug("pkinit_client_profile %p %p %p %p\n",
              context, plgctx, reqctx, realm);
@@ -795,19 +795,17 @@ pkinit_client_profile(krb5_context context,
                               &reqctx->opts->require_crl_checking);
     pkinit_libdefault_string(context, realm, KRB5_CONF_PKINIT_DH_MIN_BITS,
                              &minbits);
-    reqctx->opts->trad_min_strength =
-        parse_dh_min_bits(context, minbits);
+    reqctx->opts->trad_min_strength = parse_dh_min_bits(context, minbits);
     free(minbits);
 
     pkinit_libdefault_string(context, realm,
                              KRB5_CONF_PKINIT_PQC_MIN_ALGORITHM,
-                             &pqc_min);
-    if (pqc_min != NULL) {
-        int pqc_strength =
-            parse_pqc_min_algorithm(context, pqc_min);
+                             &pqc_min_algo);
+    if (pqc_min_algo != NULL) {
+        int pqc_strength = parse_pqc_min_algorithm(context, pqc_min_algo);
         if (pqc_strength > 0)
             reqctx->opts->pqc_min_strength = pqc_strength;
-        free(pqc_min);
+        free(pqc_min_algo);
     }
     pkinit_libdefault_string(context, realm,
                              KRB5_CONF_PKINIT_EKU_CHECKING,
@@ -1181,7 +1179,9 @@ pkinit_client_process(krb5_context context, krb5_clpreauth_moddata moddata,
         if (reqctx->kdc_alglist != NULL) {
             reqctx->selected_ek_strength =
                 pkinit_select_ek_algorithm(
-                    plgctx->cryptoctx, plgctx->opts,
+                    plgctx->cryptoctx,
+                    reqctx->opts->pqc_min_strength,
+                    reqctx->opts->trad_min_strength,
                     reqctx->client_pqc_cert,
                     reqctx->kdc_alglist);
             free_krb5_algorithm_identifiers(
@@ -1278,7 +1278,9 @@ pkinit_client_tryagain(krb5_context context, krb5_clpreauth_moddata moddata,
             }
             reqctx->selected_ek_strength =
                 pkinit_select_ek_algorithm(
-                    plgctx->cryptoctx, plgctx->opts,
+                    plgctx->cryptoctx,
+                    reqctx->opts->pqc_min_strength,
+                    reqctx->opts->trad_min_strength,
                     reqctx->client_pqc_cert, algId);
             if (reqctx->selected_ek_strength > 0)
                 do_again = 1;

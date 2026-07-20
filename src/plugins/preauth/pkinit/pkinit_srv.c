@@ -560,7 +560,7 @@ pkinit_server_verify_padata(krb5_context context,
             retval = server_check_kem(context, plgctx->cryptoctx,
                                       reqctx->cryptoctx, plgctx->idctx,
                                       &auth_pack->clientPublicValue,
-                                      plgctx->opts->pqc_min_algorithm);
+                                      plgctx->opts->pqc_min_strength);
             if (retval) {
                 pkiDebug("bad KEM parameters\n");
                 goto cleanup;
@@ -1108,14 +1108,13 @@ pkinit_init_kdc_profile(krb5_context context, pkinit_kdc_context plgctx)
     free(minbits);
 
     {
-        char *pqc_min = NULL;
+        char *pqc_min_algo = NULL;
         pkinit_kdcdefault_string(context, plgctx->realmname,
                                  KRB5_CONF_PKINIT_PQC_MIN_ALGORITHM,
-                                 &pqc_min);
-        if (pqc_min != NULL) {
-            plgctx->opts->pqc_min_algorithm =
-                parse_pqc_min_algorithm(context, pqc_min);
-            free(pqc_min);
+                                 &pqc_min_algo);
+        if (pqc_min_algo != NULL) {
+            plgctx->opts->pqc_min_strength = parse_pqc_min_algorithm(context, pqc_min_algo);
+            free(pqc_min_algo);
         }
     }
 

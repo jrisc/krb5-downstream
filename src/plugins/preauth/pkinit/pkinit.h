@@ -164,7 +164,7 @@ typedef struct _pkinit_plg_opts {
     int require_freshness;  /* require freshness token (default is false) */
     int disable_freshness;  /* disable freshness token on client for testing */
     int dh_min_bits;	    /* minimum DH modulus size allowed */
-    int pqc_min_algorithm;  /* minimum PQC algorithm strength (0=no PQC) */
+    int pqc_min_strength;   /* minimum PQC algorithm strength (0=no PQC) */
 } pkinit_plg_opts;
 
 /*
