@@ -1910,17 +1910,18 @@ cms_signeddata_create(krb5_context context,
         p7si->digest_alg->parameter->type = V_ASN1_NULL;
 
         /* Set sig algs */
-        if (p7si->digest_enc_alg->parameter != NULL)
+        if (p7si->digest_enc_alg->parameter != NULL) {
             ASN1_TYPE_free(p7si->digest_enc_alg->parameter);
+            p7si->digest_enc_alg->parameter = NULL;
+        }
         sig_alg_id = cert_sig_alg(id_cryptoctx->my_cert);
         p7si->digest_enc_alg->algorithm = OBJ_nid2obj(sig_alg_id);
-        if (!(p7si->digest_enc_alg->parameter = ASN1_TYPE_new()))
-            goto cleanup;
         /* ML-DSA parameters MUST be absent (RFC 9882). */
-        if (mldsa)
-            p7si->digest_enc_alg->parameter->type = V_ASN1_UNDEF;
-        else
+        if (!mldsa) {
+            if (!(p7si->digest_enc_alg->parameter = ASN1_TYPE_new()))
+                goto cleanup;
             p7si->digest_enc_alg->parameter->type = V_ASN1_NULL;
+        }
 
         /* Compute digest over EncapsulatedContentInfo for
          * the message-digest signed attribute. */
