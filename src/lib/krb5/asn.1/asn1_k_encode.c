@@ -1430,11 +1430,12 @@ static const struct atype_info *kem_rep_info_fields[] = {
 DEFSEQTYPE(kem_rep_info, krb5_kem_rep_info, kem_rep_info_fields);
 
 /* PkinitKEMSuppPubInfo (draft-bokovoy-kitten-pkinit-pqc) */
-DEFFIELD(kem_supp_pub_0, krb5_pkinit_kem_supp_pub_info, enctype, 0, int32);
-DEFFIELD(kem_supp_pub_1, krb5_pkinit_kem_supp_pub_info, as_req, 1,
-         ostring_data);
-DEFFIELD(kem_supp_pub_2, krb5_pkinit_kem_supp_pub_info, kemSignedData, 2,
-         ostring_data);
+DEFFIELD_IMPLICIT(kem_supp_pub_0, krb5_pkinit_kem_supp_pub_info, enctype, 0,
+                  int32);
+DEFFIELD_IMPLICIT(kem_supp_pub_1, krb5_pkinit_kem_supp_pub_info, as_req, 1,
+                  ostring_data);
+DEFFIELD_IMPLICIT(kem_supp_pub_2, krb5_pkinit_kem_supp_pub_info, kemSignedData,
+                  2, ostring_data);
 static const struct atype_info *pkinit_kem_supp_pub_info_fields[] = {
     &k5_atype_kem_supp_pub_0, &k5_atype_kem_supp_pub_1,
     &k5_atype_kem_supp_pub_2

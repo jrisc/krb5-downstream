@@ -152,9 +152,9 @@ typedef struct _krb5_kdc_kem_info {
 
 /* PkinitKEMSuppPubInfo (draft-bokovoy-kitten-pkinit-pqc) */
 typedef struct _krb5_pkinit_kem_supp_pub_info {
-    krb5_enctype      enctype;       /* [0] Int32 */
-    krb5_data         as_req;        /* [1] DER(AS-REQ) */
-    krb5_data         kemSignedData; /* [2] DER(kemSignedData) */
+    krb5_enctype      enctype;       /* [0] IMPLICIT Int32 */
+    krb5_data         as_req;        /* [1] IMPLICIT DER(AS-REQ) */
+    krb5_data         kemSignedData; /* [2] IMPLICIT DER(kemSignedData) */
 } krb5_pkinit_kem_supp_pub_info;
 
 /*
